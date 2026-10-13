@@ -1,0 +1,118 @@
+Consider the feed-forward sublayer in the foundational essay. Every token's contextual vector passes through the same learned function. Making that function larger can add capacity, but every token must then pay for its added arithmetic.
+
+There is a different possibility: store several functions and choose only a few for each incoming representation. A token could use a small part of the stored capacity while other tokens use different parts. The immediate difficulty is deciding which functions to use, and how their outputs should be combined.
+
+<ExpertArchitecture />
+
+## The router
+
+<Definition id="experts-router-definition">
+
+Let $x\in\mathbb R^d$ be one token's incoming hidden vector, and let $E_1,\ldots,E_N$ be learned feed-forward functions with outputs in $\mathbb R^d$. A **router** computes preferences among them.
+
+For our first construction, use
+
+$$
+r=\operatorname{softmax}(W_rx),\qquad W_r\in\mathbb R^{N\times d}.
+$$
+
+</Definition>
+
+This defines the softmax router used in our example. Each row of $W_r$ produces one expert score, then softmax normalizes the scores. The candidates are now expert functions, rather than token positions or vocabulary entries. A larger router probability says that this input favors that expert; it does not yet tell us how many experts will actually run.
+
+We could use these probabilities to average every expert's output. That would give a mixture, but still require evaluating all its functions. The diagram's computational saving would disappear. To make execution sparse, we must choose a smaller set before evaluating the experts.
+
+A simple rule is to keep the $k$ largest router probabilities. Their indices form a set $S$. The selected probabilities generally sum to less than one, because we have discarded the others. Dividing by their remaining total gives weights that again sum to one:
+
+$$
+g_i=\begin{cases}
+\displaystyle r_i/\sum_{j\in S}r_j,&i\in S,\\
+0,&i\notin S.
+\end{cases}
+$$
+
+<Definition id="experts-definition-1">
+
+The **top-$k$ mixture** considered here returns
+
+$$
+y=\sum_{i\in S}g_iE_i(x).
+$$
+
+This definition fixes a renormalized softmax toy router. It is not a specification for every MoE architecture.
+
+</Definition>
+
+## Top-k routing
+
+Consider router probabilities $(0.50,0.25,0.15,0.10)$ and $k=2$. The largest two entries select experts one and two, so $S=\{1,2\}$. Their total is $0.50+0.25=0.75$. The normalized gates are therefore
+
+$$
+g_1=\frac{0.50}{0.75}=\frac23,\qquad
+g_2=\frac{0.25}{0.75}=\frac13,\qquad
+g_3=g_4=0.
+$$
+
+The two retained gates sum to one; the other experts contribute nothing to this token's output.
+
+For $x=(1,0)$, let the first two displayed expert maps return $(2,0)$ and $(0,3)$. Their weighted combination is
+
+$$
+y=\frac23(2,0)+\frac13(0,3)=\left(\frac43,1\right).
+$$
+
+The animation begins with exactly this example. Each tiny expert is a matrix followed by ReLU, keeping all coordinates inspectable. Real experts generally contain wider hidden layers.
+
+<Lab kind="experts" />
+
+Changing the second input coordinate alters both the router scores and the expert outputs. An expert's gate answers whether and how strongly it contributes; the expert's matrix answers what it computes. These are separate learned functions of the same input.
+
+Inactive experts remain visible because their weights must still be stored. Their displayed outputs are included for comparison; an actual sparse execution does not need to compute them.
+
+## Expert specialization
+
+The name invites us to imagine a grammar expert, a mathematics expert, or a cat expert. The construction makes no such assignment. Each $E_i$ is a learned numerical function applied to a token's current representation, and routing can occur again at later layers.
+
+Different representations may acquire different routing patterns through training. Whether those patterns admit a useful semantic interpretation is an empirical question. It should not be settled by the labels on our diagram.
+
+The computational purpose does not depend on such labels. A model can store many expert parameters while evaluating only the selected functions for one token. This gives it a way to add stored capacity without making every token use every added parameter.
+
+The [Mixtral paper](https://arxiv.org/abs/2401.04088) gives a concrete construction with eight feed-forward experts per layer and two selected per token. It illustrates why “many parameters” and “all parameters used on this token” are different statements.
+
+<span id="experts-stored-capacity-is-not-active-arithmetic" className="anchor-alias" aria-hidden="true"></span>
+<span id="stored-capacity-is-not-active-arithmetic" className="anchor-alias" aria-hidden="true"></span>
+
+Suppose a toy model has $P_s$ shared parameters and $N$ experts containing $P_e$ parameters each. If one token uses $k$ experts, a simplified count gives
+
+$$
+P_{\mathrm{total}}=P_s+NP_e,\qquad
+P_{\mathrm{active}}=P_s+kP_e.
+$$
+
+With $P_s=100$, $N=4$, $P_e=50$, and $k=2$, these counts are $300$ and $200$. They refer to a simplified model, not the number of weights in our miniature matrices.
+
+Stored parameters influence memory requirements even when inactive. Active parameters help describe one token's path, but they do not directly predict latency. Routing, communication, batching, and the surrounding attention layers also consume work.
+
+## Load balancing and communication
+
+Consider a batch of eight tokens, each selecting two of four experts. This produces sixteen expert assignments. A balanced batch might send four assignments to each expert. Another batch might send eight to expert one, six to expert two, and one each to experts three and four. The number of selected paths is unchanged, but the work is distributed very differently.
+
+If each expert has its own device, the latter batch leaves two devices with little work while the first device has eight assignments to process. Finishing the batch requires finishing its busy paths. Actual latency depends on kernels, batching, and communication, but the example already shows why equal active parameter counts do not establish equal execution time.
+
+This raises a training question as well as a scheduling question. If most inputs are repeatedly sent to a few experts, the other experts receive fewer training examples. A router may therefore need encouragement to distribute assignments. Some methods add a balancing loss; others adjust routing biases or use different assignment procedures. Balancing must still leave room for the model to choose useful functions for a particular input.
+
+An implementation can also set a capacity for each expert's batch. If assignments exceed it, the system must handle the overflow—for example by dropping or rerouting assignments in a capacity-limited design, or by processing a larger variable-sized batch. These choices affect either the computation performed or the resources it needs; there is no universal overflow rule built into our top-$k$ formula. [Switch Transformers](https://arxiv.org/abs/2101.03961) provides a concrete capacity-limited construction with a balancing objective.
+
+Distributed execution adds a further step. Token representations must travel to the devices holding their selected experts, and the resulting vectors must return to be combined at the original token positions. Making expert arithmetic smaller does not make that communication free. Expert placement, assignment balance, and transfer costs belong in the same performance measurement.
+
+This is why a sparse parameter count should motivate a measurement, rather than replace one. [vLLM expert-parallel deployment](https://docs.vllm.ai/en/stable/serving/expert_parallel_deployment/) documents expert placement, dispatch backends, and load-balancing facilities.
+
+## Routing variants and shared experts
+
+So far, every expert has competed for selection. Some architectures also retain a **shared expert** that runs for every token, combining its output with the selected routed outputs. This separates a computation available to all tokens from the additional capacity chosen by the router.
+
+The official [Qwen3.5-397B-A17B model card](https://huggingface.co/Qwen/Qwen3.5-397B-A17B) reports 397B total and 17B activated parameters, with 512 routed experts and ten routed plus one shared expert active. It also describes a hybrid attention/recurrent layout. This is a particular architecture, not a synonym for “Transformer”.
+
+The [DeepSeek-V3 report](https://arxiv.org/html/2412.19437v2) describes sigmoid routing affinities, selection biases, and shared experts. Our top-$k$ softmax example therefore supplies an understandable construction, not a universal implementation recipe.
+
+We have changed which learned functions execute after attention. The next essay returns to the input: how can a model receive evidence from a picture when its original lookup table contains text-token IDs?

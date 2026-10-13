@@ -1,0 +1,254 @@
+Consider the words **the dog chased the cat**. In the positional construction used in Foundations, each token received a vector associated with its place in the sequence. This supplied information that the token embedding alone could not provide. We can now ask more precisely how position should enter a comparison between two tokens.
+
+Suppose we move the whole phrase three places to the right. The individual position numbers change, but the dog is still one place before chased. If we move chased without moving dog, their separation changes. These are different changes, and a positional construction should give us a way to distinguish them.
+
+Recall what an attention comparison is for. A receiving query assigns scores to candidate keys; softmax turns those scores into weights; the weights determine how much of each value reaches the receiving token. If position changes the score, it can change the information that token gathers. We want the learned comparison to respond to both content and relative position, rather than leave their relationship to be inferred from separate position labels.
+
+This question arises in each head of multi-head attention. Each head has its own learned query and key maps, and each must compare vectors with many coordinates. We shall first construct the positional operation in a single coordinate plane, where it can be drawn and checked. We can then apply that same construction to pairs of coordinates within each head. For now, hold the unrotated query and key fixed while changing their position labels, so that we can isolate what the positional operation contributes.
+
+## Positions and distances
+
+A position number describes one location. A distance compares two locations. If a receiving token is at position $i$ and a candidate token is at position $j$, their signed displacement is $j-i$. A negative displacement puts the candidate before the receiver; a positive one puts it after.
+
+For dog at position $1$ and chased at position $2$, the displacement from the receiver chased to the candidate dog is $1-2=-1$. Moving both by three gives $4-5=-1$. Moving only the receiver one further place gives $4-6=-2$.
+
+The first operation changes our choice of origin. The second changes the relationship we want to represent. The controls below separate these operations. The words are treated as individual toy tokens here; this is a diagram of positions, not the output of a tokenizer.
+
+<RopeStudy kind="positions" />
+
+The desired property is elementary to state. Adding the same offset $c$ to both positions should leave the displacement unchanged:
+
+$$
+(j+c)-(i+c)=j-i.
+$$
+
+We would like the *positional part* of an attention comparison to have an analogous property. The content vectors should still matter, but our choice of where to begin numbering the positions need not become an additional distinction in that comparison.
+
+## Additive position vectors
+
+Recall the embedding construction from Foundations: $x_i=e(t_i)+p_i$. The lookup supplies the content vector $e(t_i)$, and $p_i$ supplies an additional vector for position $i$. Adding them before applying the query and key maps makes position available to the model. It does not, merely by addition, guarantee the property we have just described.
+
+To see why a guarantee would require more, temporarily make the query and key maps the identity. Let $u=e(t_i)$ be the receiving token's embedding and $v=e(t_j)$ the candidate token's embedding, before adding position vectors. We keep these two token embeddings fixed as their position labels change. In this simplified case, $u+p_i$ is the query and $v+p_j$ is the key. Their comparison becomes
+
+$$
+(u+p_i)^{\mathsf T}(v+p_j)
+=u^{\mathsf T}v+u^{\mathsf T}p_j+p_i^{\mathsf T}v+p_i^{\mathsf T}p_j.
+$$
+
+The separate position vectors occur in cross terms with the content. For arbitrary choices of $p_i$, shifting both indices gives no reason for these terms to remain unchanged. This is not a proof that adding positions is unsuccessful. It identifies a property that addition alone does not establish.
+
+For a small counterexample, take $u=v=(1,0)^{\mathsf T}$ and $p_i=(i,0)^{\mathsf T}$. At positions $1$ and $2$, the dot product is $2\cdot3=6$. At positions $4$ and $5$, it is $5\cdot6=30$, although the separation is still one. The position has rather emphatically made itself known.
+
+We can instead ask whether a position might *transform* a vector. We need an operation that changes with position, yet behaves predictably when the same change is applied on both sides of a comparison. A rotation provides a particularly simple example.
+
+## Rotations in the plane
+
+Consider the column vector $(1,0)^{\mathsf T}$, pointing along the horizontal axis. Turning it through an angle $\phi$ moves its endpoint to $(\cos\phi,\sin\phi)^{\mathsf T}$. Its length remains one. The column vector $(0,1)^{\mathsf T}$ turns to $(-\sin\phi,\cos\phi)^{\mathsf T}$.
+
+An arbitrary vector $(a,b)^{\mathsf T}$ is $a$ times the first basis vector plus $b$ times the second. Rotating both basis vectors therefore gives
+
+$$
+\begin{pmatrix}
+a\cos\phi-b\sin\phi\\
+a\sin\phi+b\cos\phi
+\end{pmatrix}.
+$$
+
+These two coordinates can be collected into the matrix
+
+$$
+R(\phi)=
+\begin{pmatrix}
+\cos\phi&-\sin\phi\\
+\sin\phi&\cos\phi
+\end{pmatrix},
+\qquad
+R(\phi)\begin{pmatrix}a\\b\end{pmatrix}
+=\begin{pmatrix}a\cos\phi-b\sin\phi\\a\sin\phi+b\cos\phi\end{pmatrix}.
+$$
+
+At $\phi=\pi/6$, or $30^\circ$, the vector $(1,0)^{\mathsf T}$ becomes $(\sqrt3/2,1/2)^{\mathsf T}$. The picture and the matrix calculation describe the same movement. Use the other input vector below to inspect both columns of the matrix.
+
+<RopeStudy kind="rotation" />
+
+A rotation preserves more than a single vector's length. If we rotate two vectors through the same angle, their angle relative to each other also remains unchanged. Their dot product should therefore stay fixed. We can check this without relying on the picture.
+
+<Lemma id="rope-rotation-lemma">
+
+For the planar rotation matrices defined above,
+
+$$
+R(\phi)^{\mathsf T}=R(-\phi),\qquad
+R(\alpha)R(\beta)=R(\alpha+\beta).
+$$
+
+In particular, $R(\phi)^{\mathsf T}R(\phi)=I$. Thus, for any two vectors $u,v\in\mathbb R^2$, rotating both through the same angle preserves their dot product.
+
+</Lemma>
+
+<Proof>
+
+Transposing the displayed matrix reverses the signs of its off-diagonal entries. Since cosine is even and sine is odd, the result is $R(-\phi)$. Multiplication of $R(\alpha)$ and $R(\beta)$ gives the sine and cosine addition formulas, hence $R(\alpha+\beta)$. Taking $\alpha=-\phi$ and $\beta=\phi$ gives $R(0)=I$. Consequently,
+
+$$
+\bigl(R(\phi)u\bigr)^{\mathsf T}\bigl(R(\phi)v\bigr)
+=u^{\mathsf T}R(\phi)^{\mathsf T}R(\phi)v
+=u^{\mathsf T}v.
+$$
+
+Setting $v=u$ proves preservation of squared length as well.
+
+</Proof>
+
+Here $u$ and $v$ stand for arbitrary vectors in the plane; the lemma will apply to the query and key coordinates we obtain from the learned maps. We now have a candidate operation with the property we wanted: applying the same rotation on both sides does not change their comparison.
+
+## Position-dependent rotations
+
+Choose an angular step $\omega$, measured in radians per position. Position $i$ will rotate a vector through $i\omega$. The step is fixed for the coordinate pair we are examining; the position determines how many such steps to apply.
+
+Let $q_i$ and $k_j$ be the query and key vectors *before* this positional rotation. They have already been formed by their learned maps. Here the inputs to those maps are the representations entering the layer; positions enter this construction through the rotations applied to its query and key outputs. Define
+
+$$
+\widetilde q_i=R(i\omega)q_i,
+\qquad
+\widetilde k_j=R(j\omega)k_j.
+$$
+
+We rotate the query and the key independently, then compare them. A key is not obtained by passing the query through another transformation. Their common input construction remains the one developed in Foundations.
+
+Why not rotate the token embedding itself, then form the query and key? This is a reasonable alternative to consider. In the first layer, the vector entering those maps comes from the embedding; in later layers, it is the contextual representation produced by the preceding block. In either case, the learned projections can stretch, shear, and mix its coordinates. A shared rotation of their inputs need not remain a shared rotation of their outputs.
+
+Write $E_i$ for a rotation acting on the input coordinates at position $i$. Rotating those inputs first would give the comparison
+
+$$
+(W_QE_ix_i)^{\mathsf T}(W_KE_jx_j)
+=x_i^{\mathsf T}E_i^{\mathsf T}W_Q^{\mathsf T}W_KE_jx_j.
+$$
+
+The learned maps now sit between the two rotations. The identities in <StatementRef id="rope-rotation-lemma" /> do not let us combine the rotations across an arbitrary matrix $W_Q^{\mathsf T}W_K$. A common shift of the positions can therefore change this score even when the content vectors and their separation remain fixed.
+
+For a small example, let both input vectors be $(1,0)^{\mathsf T}$, take $W_Q=W_K=\operatorname{diag}(2,1)$, and rotate the inputs by $90^\circ$ per position. At positions $0$ and $2$, the projected vectors are $(2,0)^{\mathsf T}$ and $(-2,0)^{\mathsf T}$, with dot product $-4$. Shift both positions by one: the projected vectors become $(0,1)^{\mathsf T}$ and $(0,-1)^{\mathsf T}$, with dot product $-1$. Their separation is still two positions. The projection stretches the horizontal direction more than the vertical one, so the shared input rotation has changed the comparison.
+
+RoPE instead forms $q_i=W_Qx_i$ and $k_j=W_Kx_j$ first, then rotates in the coordinates of each head. The rotations are adjacent in the comparison, so the lemma applies directly:
+
+$$
+q_i^{\mathsf T}R(i\omega)^{\mathsf T}R(j\omega)k_j
+=q_i^{\mathsf T}R\bigl((j-i)\omega\bigr)k_j.
+$$
+
+In the same numerical example, projecting first gives $(2,0)^{\mathsf T}$ on both sides. Rotating these head vectors at positions $0,2$ or at positions $1,3$ gives dot product $-4$ in both cases. Rotating an embedding is possible, but it defines a different construction; unrestricted learned projections would not give it this relative-position guarantee. Applying the rotations after projection obtains that property while leaving each head free to learn its own query and key maps.
+
+For a worked case, take $q_i=(1,0)^{\mathsf T}$, $k_j=(0,1)^{\mathsf T}$, $i=2$, $j=1$, and $\omega=\pi/6$. The query turns by $60^\circ$ and the key by $30^\circ$:
+
+$$
+\widetilde q_i=\begin{pmatrix}1/2\\\sqrt3/2\end{pmatrix},
+\qquad
+\widetilde k_j=\begin{pmatrix}-1/2\\\sqrt3/2\end{pmatrix}.
+$$
+
+Their comparison is
+
+$$
+\widetilde q_i^{\mathsf T}\widetilde k_j
+=\left(\frac12\right)\left(-\frac12\right)
++\left(\frac{\sqrt3}{2}\right)\left(\frac{\sqrt3}{2}\right)
+=-\frac14+\frac34=\frac12.
+$$
+
+The two products have different signs. Both contribute to the result. The animation follows these coordinates into their matching products, then adds the products once. The displayed quantity is the dot product before attention scaling or softmax.
+
+<RopeStudy kind="comparison" />
+
+Moving both positions together changes the two drawn vectors, but keeps their comparison fixed. Changing their separation generally changes it. We can now collect the rotation argument into a general statement, applying it to any fixed pair of content vectors.
+
+## Relative-position comparisons
+
+By <StatementRef id="rope-rotation-lemma" />, successive rotations add their angles. In particular, undoing a rotation by $i\omega$ and then applying one by $j\omega$ leaves a rotation by $(j-i)\omega$.
+
+<Proposition id="rope-relative-position">
+
+For fixed vectors $u,v\in\mathbb R^2$ and a fixed angular step $\omega$,
+
+$$
+\bigl(R(i\omega)u\bigr)^{\mathsf T}\bigl(R(j\omega)v\bigr)
+=u^{\mathsf T}R\bigl((j-i)\omega\bigr)v.
+$$
+
+Thus this comparison is unchanged when the same offset is added to both position indices.
+
+</Proposition>
+
+<Proof>
+
+Move the rotation on the first vector across the transpose. By <StatementRef id="rope-rotation-lemma" />, its transpose reverses the angle, and the two successive rotations combine:
+
+$$
+\begin{aligned}
+\bigl(R(i\omega)u\bigr)^{\mathsf T}\bigl(R(j\omega)v\bigr)
+&=u^{\mathsf T}R(-i\omega)R(j\omega)v\\
+&=u^{\mathsf T}R\bigl((j-i)\omega\bigr)v.
+\end{aligned}
+$$
+
+Replacing $i,j$ by $i+c,j+c$ leaves $j-i$ unchanged, proving the stated property.
+
+</Proof>
+
+The right-hand expression also gives another picture of the calculation. Keep the query still and rotate the key only by the relative angle. Toggle **Relative frame** in the preceding animation. It uses the same vectors and returns the same dot product; we have merely removed the rotation shared by the two sides.
+
+In our example, the relative angle is $-30^\circ$. Rotating $(0,1)^{\mathsf T}$ by that angle gives $(1/2,\sqrt3/2)^{\mathsf T}$. Its dot product with the unrotated query $(1,0)^{\mathsf T}$ is again $1/2$.
+
+The proposition holds the unrotated vectors fixed. In a complete network, those vectors can depend on the context, and the causal mask imposes its own restriction on which positions may contribute. We have proved a property of the positional comparison, not invariance of an entire language model under editing its input.
+
+## Coordinate pairs within a head
+
+The planar example has established the property we need, but an attention head must compare learned features with more than two coordinates. Discarding the other coordinates would discard much of the content the head was built to compare. We need to carry the positional construction into that larger feature space while retaining the relative-position property in <StatementRef id="rope-relative-position" />.
+
+Divide an even-dimensional query and key into coordinate pairs. Each pair supplies a plane on which the same rotation argument applies; the contributions from all the planes add to the head's score. In multi-head attention, this happens inside each head, after its own query and key projections. A coordinate pair is therefore a part of a head, rather than a head of its own.
+
+For $d_k=4$, write $q=(q_0,q_1,q_2,q_3)^{\mathsf T}$. The first two coordinates form one plane; the second two form another. These are coordinate planes in the representation, not two spatial directions in the sentence. Allow each plane its own angular step, $\omega_0$ and $\omega_1$:
+
+$$
+\mathcal R_i=
+\begin{pmatrix}
+R(i\omega_0)&0\\
+0&R(i\omega_1)
+\end{pmatrix}.
+$$
+
+Each zero denotes a $2\times2$ zero block. The resulting $4\times4$ matrix acts on the two pairs independently. Their dot products then add to form the full comparison:
+
+$$
+(\mathcal R_iq)^{\mathsf T}(\mathcal R_jk)
+=\sum_{b=0}^{1}
+\bigl(q^{(b)}\bigr)^{\mathsf T}
+R\bigl((j-i)\omega_b\bigr)k^{(b)},
+$$
+
+where $q^{(0)}=(q_0,q_1)^{\mathsf T}$ and $q^{(1)}=(q_2,q_3)^{\mathsf T}$, with the same pairing for $k$.
+
+Why use different angular steps? A single rotation repeats after a full turn. It can therefore assign the same angle to different distances. Several rates offer several positional comparisons: one pair turns quickly, while another changes more slowly. This does not make an individual score a unique label for every distance, but it gives the head more than one repeated pattern with which to work.
+
+<RopeStudy kind="pairs" />
+
+For an even width $d_k$, one standard choice is $\omega_b=B^{-2b/d_k}$ for $b=0,\ldots,d_k/2-1$, with a base such as $B=10000$. At width four this gives angular steps $1$ and $0.01$ radians per position. The alternate $30^\circ$ and $3^\circ$ setting in the illustration separates the rates visibly; it is chosen for teaching. The construction and frequency choice are described in the [RoFormer paper](https://arxiv.org/abs/2104.09864).
+
+## RoPE in attention
+
+The construction we have developed is **rotary position embedding**, or **RoPE**: position-dependent rotations act on query/key coordinate pairs before their dot products are formed. In the construction here, the values are not rotated. They remain the quantities transmitted by the resulting attention weights.
+
+The order of operations is therefore: form queries, keys, and values; rotate query/key coordinate pairs using their positions; compute and scale their dot products; apply any mask; normalize; and combine values. RoPE changes how positions enter the comparisons. It does not replace the rest of attention.
+
+Writing $x_i$ for the representation entering this layer, our column-vector convention gives $\widetilde q_i=\mathcal R_iW_Qx_i$ and $\widetilde k_i=\mathcal R_iW_Kx_i$. In implementations that store token vectors as rows, the equivalent rotations use the corresponding transposes. Some implementations pair adjacent coordinates and others pair coordinates across two halves of the head; their storage convention must agree with their weights.
+
+We should now follow the changed comparison through the rest of attention. Consider a query for chased at position $2$, reading the toy prefix the dog chased at positions $0,1,2$. Use $q=(1,0)^{\mathsf T}$ and candidate keys $(1,0)^{\mathsf T}$, $(0,1)^{\mathsf T}$, and $(1,1)^{\mathsf T}$. These are hand-chosen head vectors, not token embeddings obtained from a trained model.
+
+Without rotation, their dot products are $1,0,1$. With an angular step of $30^\circ$ per position, the rotated dot products are $1/2,1/2,1$. Dividing each by $\sqrt2$ and applying softmax changes the weight on dog from approximately $0.198$ to $0.292$. Its value now contributes more to the output. The keys and query kept their lengths throughout; it was their relative orientation that changed the comparison.
+
+<ExtensionStudy kind="rotary" />
+
+Move all positions together in the illustration: the rotated weights and output stay fixed. Move only the receiver: its distances to the earlier candidates change, and so can their weights. The values themselves are unchanged. This is the practical role of the geometry: the head can gather different information according to relative position, while a shared shift of these fixed content vectors leaves their comparisons unchanged.
+
+The example does not establish that a nearby word should always receive more weight. Rotations repeat, and the learned vectors also affect each score. Nor does preserving a vector's length preserve the attention output when different positions rotate through different angles. RoPE supplies a structured dependence on distance; training determines how a model uses that dependence. The resulting attention output enters the rest of the block and can eventually change its vocabulary scores and generated tokens, though this small head calculation alone cannot tell us which token a trained model will produce.
+
+We have made position part of the comparison in each attention head. The next chapter keeps queries, keys, and values but asks whether every query must compare with every preceding position.

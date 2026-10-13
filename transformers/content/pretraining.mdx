@@ -1,0 +1,129 @@
+Consider the matrices we have used so far. Once their entries are supplied, we can follow a representation through projections, comparisons, and weighted sums. But none of those calculations tells us which entries to choose. A randomly initialized transformer has the same computational structure as a trained one; it has not yet acquired the behavior for which we built it.
+
+We need examples that can distinguish a useful choice of parameters from an unhelpful one. Language itself provides a starting point. After reading a prefix, a model can assign probabilities to possible continuations. A recorded continuation then gives us something against which to compare those probabilities.
+
+The training construction introduced in Foundations can now be examined more closely. We shall first turn a piece of text into prediction examples, then follow one example through a loss and an actual parameter update. Finally, we shall ask what that update establishes, and what it leaves unresolved.
+
+## Causal prediction targets
+
+Take the toy sequence
+
+$$
+(\langle\mathrm{bos}\rangle,\ \mathrm{the},\ \mathrm{dog},\ \mathrm{chased},\ \mathrm{the},\ \mathrm{cat},\ \langle\mathrm{eos}\rangle).
+$$
+
+Here the words and boundary markers are individual toy tokens. The beginning marker supplies a first input; the ending marker gives the model a target at the end of the sentence. A real tokenizer need not divide the sentence this way.
+
+The first position predicts the. After the dog, the model predicts chased. After the dog chased the, it predicts cat. We obtain these problems by shifting the sequence one place: input row $i$ containing $t_i$ is trained against target $t_{i+1}$.
+
+The target is known to the training procedure. It must still be unavailable to the representation making that prediction. The causal mask establishes that distinction. Select a row below and inspect exactly which preceding tokens are available.
+
+<ExtensionStudy kind="batch" />
+
+This use of the recorded prefix is often called **teacher forcing**. We train on the true earlier tokens rather than first generating a possibly incorrect continuation. Several losses can be computed in parallel because the causal mask keeps their input dependencies separate. Parallel computation does not mean a position may read its target.
+
+## Prediction loss
+
+A target such as cat is a label, rather than a numerical prediction error. To obtain a loss, consider the probability assigned to that label. If the model assigns it probability $1/3$, the observed token is less well supported than if it assigns probability $0.8$.
+
+For one example with target index $y$, define
+
+$$
+\ell=-\log p_y.
+$$
+
+This loss is zero when $p_y=1$, increases as the target probability falls, and becomes arbitrarily large as that probability approaches zero. It also collects sequence probabilities conveniently: taking the negative logarithm of a product turns it into a sum.
+
+For parameters $\theta$ and a sequence of prediction positions, our causal language-model objective is therefore
+
+$$
+\mathcal L(\theta)
+=-\frac1N\sum_{i=0}^{N-1}
+\log p_\theta(t_{i+1}\mid t_{0:i}).
+$$
+
+$N$ counts the included prediction targets. Padding and excluded positions need their own masking convention; they should not silently enlarge the denominator. Across a batch, we can average over all included tokens or use another explicitly specified weighting. That choice affects how examples contribute.
+
+## The output-map gradient
+
+The loss is useful only if we can relate it to the parameters. Begin with a small vocabulary containing cat, dog, and the. Let the representation of our prefix be the fixed column vector
+
+$$
+h=\begin{pmatrix}1\\1/2\end{pmatrix}.
+$$
+
+For this illustration we learn only a readout matrix $W\in\mathbb R^{3\times2}$. The prefix representation is supplied by hand. Its logits and probabilities are
+
+$$
+z=Wh,\qquad p=\operatorname{softmax}(z).
+$$
+
+If $W$ is initially zero, all three logits are zero and each probability is $1/3$. With target cat, the loss is $\log3\approx1.099$. To improve that loss, we need a direction in which to move the entries of $W$.
+
+We can first differentiate with respect to the logits. Since
+
+$$
+\ell=-z_y+\log\sum_c e^{z_c},
+$$
+
+differentiation gives
+
+$$
+\frac{\partial\ell}{\partial z_c}=p_c-\mathbf1[c=y].
+$$
+
+The target coordinate has derivative $1/3-1=-2/3$; each other coordinate has derivative $1/3$. A step opposite this gradient raises the target logit and lowers its competitors. The probabilities remain normalized because they are recalculated by softmax.
+
+But these are derivatives with respect to $z$, not yet with respect to $W$. The relation $z_c=\sum_bW_{cb}h_b$ supplies the remaining chain rule:
+
+$$
+\frac{\partial\ell}{\partial W_{cb}}
+=\bigl(p_c-\mathbf1[c=y]\bigr)h_b.
+$$
+
+Each logit derivative is distributed across its matrix row according to the input coordinates. A zero input coordinate contributes zero to that entry's gradient for this example.
+
+## A parameter update
+
+Let $G$ denote this matrix gradient. A gradient-descent step with learning rate $\eta$ is
+
+$$
+W_{\mathrm{new}}=W-\eta G.
+$$
+
+For the cat row, the logit derivative $-2/3$ multiplies the features $(1,1/2)$, giving gradient row $(-2/3,-1/3)$. Subtracting $0.6$ times this row from zero gives $(0.4,0.2)$. Each other row has gradient $(1/3,1/6)$ and becomes $(-0.2,-0.1)$. Thus, at our initial parameters and with $\eta=0.6$, the update gives
+
+$$
+W_{\mathrm{new}}=
+\begin{pmatrix}
+0.4&0.2\\
+-0.2&-0.1\\
+-0.2&-0.1
+\end{pmatrix}.
+$$
+
+Multiplying by $h$ gives logits $(0.5,-0.25,-0.25)^{\mathsf T}$. The target probability rises to approximately $0.514$, and the loss falls to approximately $0.665$. We have changed a matrix, rather than simply drawn a more favorable probability bar.
+
+<ExtensionStudy kind="training" />
+
+The animation separates the forward calculation, the derivative with respect to logits, the matrix gradient, and the subtraction from the old matrix. The update counter repeats the same training example; changing its target or feature coordinate recomputes the entire trajectory from the initial parameters. This makes the experiment reproducible.
+
+In a full model, the chain rule continues through the representation that produced $h$. Gradients reach the attention maps, feed-forward maps, embeddings, and other trainable parameters. The forward graph tells us which quantities depend on which parameters; backpropagation traverses those dependencies to accumulate derivatives. The toy uses plain gradient descent. It does not simulate a modern optimizer or a complete transformer training run.
+
+## Training and evaluation
+
+It is easy to congratulate our matrix for preferring cat more strongly. We should first notice how little we asked it to do. Repeatedly presenting one fixed prefix gives it no reason to learn the range of distinctions needed for other sentences.
+
+The second curve in the illustration measures a separate held-out toy example: feature vector $(0,1)^{\mathsf T}$ with target dog. Its loss can rise while the training loss falls. Both curves are computed from the same updated matrix. This is a small demonstration of a distinction, not a realistic estimate of a language model's generalization.
+
+Training data should therefore be separated from the examples used to evaluate the learned behavior. Overlapping or duplicated material can obscure that separation. Validation loss measures predictive performance on a chosen distribution; task evaluations ask further questions about behavior. Neither a single successful sentence nor a single scalar loss establishes an understanding of grammar or semantics.
+
+## Compute and data
+
+The same construction can be applied to many examples from a broad corpus. This is the stage commonly called **pre-training**. A large vocabulary, long sequences, and many layers make every update costly. Parameters require storage, and training also requires gradients, optimizer state, and suitable intermediate activations.
+
+We can relate other chapters to that cost. Sparse experts change which parameters execute; the later quantization and memory essays examine numerical storage and the movement of intermediate quantities. These are computational choices around the learning problem, not replacements for its objective.
+
+The [GPT-3 paper](https://arxiv.org/abs/2005.14165) describes large-scale autoregressive pre-training. The [Chinchilla study](https://arxiv.org/abs/2203.15556) examines allocation between model size and training tokens under a compute budget. Its findings come from particular experiments and fitted relationships, rather than a theorem that one parameter-to-token ratio suits every dataset, architecture, or deployment goal. The [official causal language-modeling tutorial](https://huggingface.co/docs/transformers/en/tasks/language_modeling) supplies a concrete implementation reference.
+
+Pre-training gives us a model trained to predict continuations of its data. Our next question concerns a more particular kind of continuation: the response we would like an assistant to give when someone asks for help.

@@ -1,0 +1,113 @@
+Consider the generation loop once more. We choose a token, append it, and ask the target model for the next distribution. This dependence makes successive choices sequential.
+
+A cheaper draft model might guess several tokens in advance. Most of its guesses may be acceptable. But merely replacing the target's choices with the draft's would generally change the distribution we wanted to sample.
+
+We therefore need a correction rule. Begin with a single prefix and one proposed token; several-token verification can follow after the probability calculation is understood.
+
+## Draft and target distributions
+
+Let $p$ be the target next-token distribution and $q$ the cheaper draft distribution on a common vocabulary. The draft proposes $x\sim q$.
+
+If the draft proposes a token less often than the target would, we can always accept that proposal. If it proposes the token too often, we must accept only a fraction of its occurrences. This motivates
+
+$$
+a(x)=\min\left(1,\frac{p(x)}{q(x)}\right).
+$$
+
+A proposed token has $q(x)>0$, so the ratio is defined on actual proposals. Draw $u$ uniformly from $[0,1)$ and accept if $u<a(x)$.
+
+The total probability mass accepted for a particular token is
+
+$$
+q(x)a(x)=\min(p(x),q(x)).
+$$
+
+This is already the desired mass wherever $q(x)\geq p(x)$. Wherever $q(x)<p(x)$, some target mass remains missing.
+
+## The residual distribution
+
+The missing amount for token $y$ is $(p(y)-q(y))_+=\max(p(y)-q(y),0)$. On rejection, sample a replacement from the normalized missing mass:
+
+$$
+r(y)=\frac{(p(y)-q(y))_+}
+{\sum_z(p(z)-q(z))_+}.
+$$
+
+This distribution is needed only when rejection is possible. If $p=q$, every proposal is accepted and there is no replacement branch to normalize.
+
+Consider the three-token example
+
+$$
+p=(0.5,0.3,0.2),\qquad q=(0.6,0.1,0.3).
+$$
+
+Acceptance probabilities are $(5/6,1,2/3)$. The accepted masses are $(0.5,0.1,0.2)$, leaving a total missing mass of $0.2$, all on token B. On any rejection in this example, the replacement is therefore B.
+
+<Lab kind="speculation" />
+
+The proposal selector is for inspection. In the algorithm, proposals are sampled from $q$; forcing a selected token repeatedly would not test the distributional guarantee. Vary the draft's preference for A and watch the replacement mass change accordingly.
+
+## Exactness of the correction
+
+<Proposition>
+
+With proposals sampled from $q$, the acceptance rule above and its residual replacement rule produce a token distributed as $p$.
+
+</Proposition>
+
+<Proof>
+
+The accepted mass at $y$ is $\min(p(y),q(y))$. The rejection probability is
+
+$$
+R=1-\sum_y\min(p(y),q(y))
+=\sum_y(p(y)-q(y))_+,
+$$
+
+because both distributions sum to one. When $R>0$, multiplying the residual distribution by its branch probability gives replacement mass $Rr(y)=(p(y)-q(y))_+$.
+
+Adding accepted and replacement mass gives $\min(p(y),q(y))+(p(y)-q(y))_+=p(y)$. When $R=0$, the accepted mass already equals $p$.
+
+</Proof>
+
+The guarantee concerns a distribution, not an identical sentence for a given random seed. We have changed the procedure by which the randomness is used.
+
+This is the central correction developed in [Fast Inference from Transformers via Speculative Decoding](https://proceedings.mlr.press/v202/leviathan23a.html).
+
+## Parallel verification
+
+Now let the draft propose $x_1,\ldots,x_\gamma$ sequentially from its own conditional distributions. The target can process that draft sequence in a causally masked pass, evaluating its conditional probabilities along the proposed prefixes.
+
+For three proposals, write $c$ for the committed prefix. The target evaluates
+
+$$
+p(x_1\mid c),\qquad
+p(x_2\mid c,x_1),\qquad
+p(x_3\mid c,x_1,x_2)
+$$
+
+in that pass. As in parallel training, the row before a proposed token predicts it; the causal mask excludes that token and every later one from the row's context. The proposals are known input candidates, so these calculations can be evaluated together without claiming that the target generated the future tokens in advance.
+
+Verify proposals in order. If the earlier proposals have been accepted, the proposed prefix is also the committed prefix, so the single-token argument applies to the next proposal. Continue until the first rejection.
+
+At that point, sample the corrective token from the residual distribution and discard all later draft proposals. Their target probabilities were conditioned on a prefix we did not keep. They cannot be silently committed after correction.
+
+If all proposals are accepted, a further target distribution can supply a bonus token. The advantage is to use one target verification pass to potentially commit several tokens, while the draft pays for proposing them.
+
+This does not repeal autoregression. It changes how likely future work is proposed and checked.
+
+## Greedy verification
+
+For deterministic greedy decoding, one can accept draft tokens while they match the target's greedy choices and correct at the first mismatch. That is a useful separate rule.
+
+It is not the general stochastic algorithm just proved. Comparing argmax tokens does not reproduce an arbitrary target sampling distribution, and accepting every “plausible” proposal would also change it.
+
+If temperature or filtering defines the desired target sampling distribution, the probability comparison must refer to that distribution. A claim of exactness needs an explicit target and compatible proposal probabilities.
+
+## When speculation helps
+
+A good draft is inexpensive and agrees often enough with the target. A long draft that is mostly rejected can waste work; an expensive draft can consume the savings. Verification cost, batching, hardware, model sizes, and serving load all matter.
+
+[vLLM speculative-decoding documentation](https://docs.vllm.ai/en/stable/features/speculative_decoding/) describes draft-model and other proposal methods, their compatibility requirements, and numerical limitations. The ideal mathematical guarantee does not imply bitwise-identical floating-point probabilities across backends or batching arrangements.
+
+We can now follow a model from its construction to its use. Its attention and feed-forward layers determine the permitted computation; training supplies parameters; generation repeatedly applies them to a growing context. Caching, quantization, and speculative decoding intervene at different points in that evaluation. Their trade-offs must be examined at those points, with a specified workload and a specified result we intend to preserve.

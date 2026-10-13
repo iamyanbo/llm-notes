@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" role="img" aria-label="The unit square and its image under M with columns (1, one half) and (0, 1)">
+<rect width="720" height="340" fill="#faf9f6"/>
+<style>text{font-family:Georgia,serif;fill:#171717}.caption{font-size:20px}.label{font-size:16px}.grid{stroke:#555657;stroke-width:1;opacity:.35;fill:none}.axis{stroke:#171717;stroke-width:1.6;fill:none}.first{stroke:#174da5;stroke-width:3;fill:none}.second{stroke:#8e4822;stroke-width:3;fill:none}</style>
+<defs><marker id="basis-blue" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#174da5"/></marker><marker id="basis-rust" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="#8e4822"/></marker></defs>
+<text class="caption" x="150" y="35" text-anchor="middle">The unit square</text>
+<text class="caption" x="510" y="35" text-anchor="middle">Its image under M</text>
+<g class="grid"><path d="M70 110 H290 M70 190 H290 M70 270 H290 M150 65 V290 M230 65 V290"/><path d="M430 110 H650 M430 190 H650 M430 270 H650 M510 65 V290 M590 65 V290"/></g>
+<path d="M150 190 L230 190 L230 110 L150 110 Z" fill="#deebff" stroke="#174da5" stroke-width="1.5"/>
+<path d="M510 190 L590 150 L590 70 L510 110 Z" fill="#deebff" stroke="#174da5" stroke-width="1.5"/>
+<path class="axis" d="M70 190 H295 M150 290 V60 M430 190 H655 M510 290 V60"/>
+<path class="first" d="M150 190 H230 M510 190 L590 150" marker-end="url(#basis-blue)"/>
+<path class="second" d="M150 190 V110 M510 190 V110" marker-end="url(#basis-rust)"/>
+<text class="label" x="232" y="213">e₁</text><text class="label" x="117" y="103">e₂</text>
+<text class="label" x="592" y="157">Me₁</text><text class="label" x="462" y="99">Me₂</text>
+<text class="label" x="150" y="318" text-anchor="middle">e₁ = (1, 0) · e₂ = (0, 1)</text>
+<text class="label" x="520" y="318" text-anchor="middle">Me₁ = (1, ½) · Me₂ = (0, 1)</text>
+<path d="M337 171 H387 M377 161 L387 171 L377 181" class="axis"/>
+</svg>

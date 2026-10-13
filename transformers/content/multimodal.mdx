@@ -1,0 +1,98 @@
+<figure className="essay-illustration"><img src="assets/chasing-roles.png" width="2172" height="724" loading="lazy" alt="The golden retriever chases the tabby cat in one scene; the cat chases the dog in the other." /></figure>
+
+Consider the two chasing scenes above (yay, cute pictures!). We can ask who is following whom without a caption telling us the answer. A language-only input consisting of the words “dog” and “cat” would omit much of the evidence: where the animals are, which way they face, and how their bodies are arranged.
+
+To give a model access to that evidence, we need a numerical representation of the image. Pixels already supply numbers, but a transformer built for language cannot simply treat a pixel's red value as a word identifier. We must decide how to organize visual inputs, construct features, and connect their dimensions to the language model.
+
+The same question that motivated our first text representations returns in another form. Which distinctions does the representation preserve? A convenient numerical format is useful only if the information needed for the task survives the conversion.
+
+## Pixel values
+
+For an RGB image, a pixel has three channel values. Dividing integer channel values by $255$ gives numbers between zero and one. An image of height $H$ and width $W$ can thus be represented as an array in $\mathbb R^{H\times W\times3}$.
+
+These values describe measured color. Their spatial arrangement matters. A vocabulary ID, by contrast, names a discrete token and selects an embedding-table row. Renumbering word IDs need not change the language representation; changing pixel values changes the image itself.
+
+We could flatten every pixel into a long vector. This preserves the values if we keep a known ordering, but the resulting input may be very large. It also leaves us to learn relationships across a large collection of raw coordinates. Grouping nearby pixels gives us a smaller unit from which to begin.
+
+## Image patches
+
+Divide an image into rectangular patches. A patch of height $h$ and width $w$ contains $3hw$ channel values, which can be flattened in a fixed order. If we use non-overlapping patches and the dimensions divide evenly, the image gives $N=(H/h)(W/w)$ such vectors.
+
+A learned patch map can convert each of those large vectors into a smaller feature vector. Later layers in a vision encoder can let features depend on surrounding patches. Position information is necessary here too: patches at the upper left and lower right are not interchangeable descriptions of a scene.
+
+Before using a learned encoder, try a simpler construction. Average each patch's red, green, and blue channels. The result has only three coordinates, so it is easy to inspect. But two pixels arranged black–white and white–black both have mean intensity $1/2$. Averaging has erased their order.
+
+This is an explicit failure of the simple representation. A patch average can retain coarse color while discarding edges, orientation, and internal arrangement. We shall use it to expose the data path, then identify where a useful vision encoder must do more.
+
+## Patch features
+
+Return to the chasing image above. The patch illustration divides its $2172\times724$ pixels into six columns and two rows of square $362\times362$ patches. Clicking a patch selects its actual mean RGB values, computed from those image pixels.
+
+For the toy feature map, write those normalized values as $z=(r,g,b)^{\mathsf T}$. A fixed projection $P\in\mathbb R^{4\times3}$ will produce a four-coordinate representation:
+
+$$
+v=Pz,\qquad
+P=\begin{pmatrix}
+1&-1&0\\
+0&1&-1\\
+1/3&1/3&1/3\\
+0.2&-0.3&0.1
+\end{pmatrix}.
+$$
+
+The first two coordinates measure channel differences; the third measures average brightness. A white patch with $z=(1,1,1)^{\mathsf T}$ maps to $(0,0,1,0)^{\mathsf T}$. Other patches differ according to their measured colors.
+
+<ExtensionStudy kind="vision" />
+
+The moving values follow the selected feature vector into matching matrix entries and then into the projected coordinates. The image, measurements, multiplication, and assembled sequence refer to the same selected patch. Nothing in this map identifies a dog or cat: its feature extraction is deliberately limited to mean color, and its weights are supplied by hand.
+
+This makes the example useful for understanding shapes and data flow. It also prevents us from attributing semantic recognition to a calculation that has not learned it. A trained vision encoder replaces the crude feature extraction with a construction capable of retaining and using more visual distinctions.
+
+## Connecting vision and language
+
+Suppose the vision encoder produces features $z_p\in\mathbb R^{d_{\mathrm{vision}}}$, while the language model receives vectors of width $d_{\mathrm{model}}$. The latter is the representation width called $d$ in Foundations. The vision features can have a different number of coordinates, so a connector maps between these spaces:
+
+$$
+v_p=Pz_p\in\mathbb R^{d_{\mathrm{model}}},\qquad
+P\in\mathbb R^{d_{\mathrm{model}}\times d_{\mathrm{vision}}}.
+$$
+
+A connector need not be a single linear map; it can contain nonlinear layers, feature merging, or other learned operations. Its role is to provide visual representations the language model can process.
+
+If text token $t_i$ supplies embedding $e(t_i)$ of the same width, one possible input arrangement is
+
+$$
+X=\begin{pmatrix}
+v_1^{\mathsf T}\\ \vdots\\v_N^{\mathsf T}\\
+e(t_1)^{\mathsf T}\\\vdots\\e(t_n)^{\mathsf T}
+\end{pmatrix}
+\in\mathbb R^{(N+n)\times d_{\mathrm{model}}}.
+$$
+
+Rows have different origins, but compatible shapes. The text rows can use the familiar vocabulary lookup. The visual rows need not be converted to ordinary word IDs before entering the model. Serialized image markers can indicate where to insert these continuous features without replacing their content with the marker's text embedding.
+
+The illustration uses twelve image rows and four hand-chosen text rows at width four. It shows assembly of the input, rather than a trained model answering the depicted question.
+
+## Learning cross-modal relations
+
+A four-coordinate image vector and a four-coordinate text vector can be placed in the same matrix. That fact alone gives us no reason for their coordinates to describe corresponding concepts. We could choose a projector that sends every image to zero and still satisfy the shape requirement.
+
+Training must make the connection useful. With image–text examples, an objective can reward outputs that depend on the image. For an image-conditioned answer $y$ and prompt $x$, a causal text objective can take the form
+
+$$
+\mathcal L=-\sum_i\log p_\theta(y_i\mid I,x,y_{<i}),
+$$
+
+where $I$ enters through the visual representation pipeline. Its gradients can reach the connector, vision encoder, language model, or a selected subset of those components, depending on what we choose to train.
+
+If the answer can be predicted from the question alone, the model may have little incentive to use the visual information. Evaluation should therefore examine what changes when the image changes, including whether the same question receives an appropriately different answer. This returns us to our original criterion: the representation and learned computation must preserve and use the distinction the task requires.
+
+## Vision encoders and positions
+
+The [Qwen2.5-VL report](https://arxiv.org/abs/2502.13923) describes a particular visual path: patches enter a vision transformer, nearby visual features are grouped, and a multilayer merger maps them into the language-model width. Our mean-color extractor and linear projection are simpler teaching constructions. They are not a reproduction of that trained pipeline. The [official implementation documentation](https://huggingface.co/docs/transformers/model_doc/qwen2_5_vl) provides the corresponding processor and model interfaces.
+
+Images also introduce positions along two spatial axes. Video adds time, while audio introduces time-dependent measurements of another kind. RoPE and related constructions can be extended to reflect those axes (for example, [V-JEPA 2](https://arxiv.org/html/2506.09985v1#S2.SS1) applies rotary positions along time, height, and width). Assigning position numbers is only part of representing the modality. Each input needs a suitable feature construction and training evidence.
+
+Finally, consuming an image and generating an image are different tasks. A system that answers with ordinary text can use the vocabulary readout we already developed. Producing image or audio content requires an output representation and generation procedure suited to that content. Equal-width input vectors do not make all output spaces interchangeable.
+
+We have returned to the problem of choosing numerical representations that retain distinctions we can recognize. Text tokens and projected image features supply different evidence, but neither useful geometry nor useful behavior follows from compatible shapes alone. The next essay examines how prediction examples can supply a loss and how that loss changes the learned matrices.

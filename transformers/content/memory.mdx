@@ -1,0 +1,107 @@
+Consider appending one token to a prefix. At each causal layer, the representations of the earlier positions depend only on their earlier prefixes. Appending text therefore leaves those old rows unchanged, provided the positions and deterministic evaluation are kept fixed.
+
+We can use that fact during evaluation: keep the keys and values already calculated for those earlier positions.
+
+## Cached keys and values
+
+Write the cached key and value matrices at a particular layer and head as $K_{1:t}$ and $V_{1:t}$. After processing a new token, append its projected rows:
+
+$$
+K_{1:t+1}=\begin{bmatrix}K_{1:t}\\k_{t+1}^{\mathsf T}\end{bmatrix},
+\qquad
+V_{1:t+1}=\begin{bmatrix}V_{1:t}\\v_{t+1}^{\mathsf T}\end{bmatrix}.
+$$
+
+The new query computes
+
+$$
+a=\operatorname{softmax}\left(
+\frac{q_{t+1}^{\mathsf T}k_1}{\sqrt{d_h}},\ldots,
+\frac{q_{t+1}^{\mathsf T}k_{t+1}}{\sqrt{d_h}}
+\right),
+\qquad h_{t+1}=\sum_{j=1}^{t+1}a_jv_j.
+$$
+
+The saved rows eliminate their repeated projections; they do not eliminate these comparisons or the reading of values. The distinction is worth keeping visible before a cache is credited with more than it does.
+
+For a head using RoPE, the retained keys include their position-dependent rotations. The new query receives the rotation for its own position before comparing with those keys. Keeping the position labels fixed is therefore part of keeping the cached calculation valid.
+
+<Lab kind="cache" />
+
+The two lanes contain the same numerical rows. The count builds a toy sequence from length one: recomputing K and V projects $2\sum_{r=1}^t r=t(t+1)$ rows, whereas appending projects $2t$. These counts isolate one source of repeated work; they are not a formula for total model latency.
+
+An implementation keeps a separate cache for each layer. Prompt **prefill** constructs the initial caches; subsequent decoding appends new rows. Cache positions, attention masks, and the actual sequence length must agree. The [Transformers cache explanation](https://huggingface.co/docs/transformers/main/cache_explanation) describes this distinction in implementation terms.
+
+## KV-cache memory
+
+For a standard full-attention cache, let $B$ be batch size, $L$ the number of layers, $T$ cached tokens, $H_{\mathrm{KV}}$ the number of key/value heads, $d_h$ their common width, and $b$ bytes per entry. Here we take the key and value widths to be equal. Counting both K and V gives
+
+$$
+M_{\mathrm{KV}}=2BLTH_{\mathrm{KV}}d_hb.
+$$
+
+The calculator uses $B=1$, $L=32$, $d_h=128$, and two-byte entries. At $T=4096$ with eight KV heads, the payload is $512$ MiB; with thirty-two heads, it is $2$ GiB. We have not included weights, allocator metadata, padding, or temporary workspaces.
+
+This formula is a count for a specified layout. Sliding-window layers, latent caches, and hybrid architectures need their own accounting rather than a substituted model name.
+
+## Grouped-query attention
+
+Multi-head attention originally gave each query head its own projected keys and values. But those stored values can dominate the cache. Could several query heads read the same K and V?
+
+**Grouped-query attention**, or GQA, makes that choice. With $H_Q$ query heads, we can provide a smaller number $H_{\mathrm{KV}}$ of KV heads and assign groups of queries to them. Ordinary multi-head attention has $H_{\mathrm{KV}}=H_Q$; multi-query attention has $H_{\mathrm{KV}}=1$.
+
+The individual queries still produce different comparisons and attention weights. Sharing candidates does not make their results identical. It does reduce the number of cached KV heads in the payload count.
+
+This is an architectural constraint on learned maps, rather than an exact storage trick applied to an arbitrary existing multi-head model. Its quality and speed require evaluation. The [GQA paper](https://aclanthology.org/2023.emnlp-main.298/) develops the construction and its relationship to multi-query attention.
+
+## Tiled attention
+
+There is another memory choice even when the attention maps remain fixed. The expression $\operatorname{softmax}(QK^{\mathsf T}/\sqrt{d_h})V$ suggests building and storing a complete score matrix. The expression does not require that implementation.
+
+For one receiving row, consider reading candidates in tiles. We can retain the largest score seen so far, $m$, a normalization sum $\ell$, and a weighted-value sum $o$, all using the same exponential scale:
+
+$$
+\ell=\sum_{\text{seen }j}e^{s_j-m},
+\qquad
+o=\sum_{\text{seen }j}e^{s_j-m}v_j.
+$$
+
+When the next tile $C$ arrives, its scores may contain a larger maximum. Let $m'=\max(m,\max_{j\in C}s_j)$. Changing the old scale requires multiplying the old sums by $e^{m-m'}$:
+
+$$
+\ell'=e^{m-m'}\ell+\sum_{j\in C}e^{s_j-m'},
+\qquad
+o'=e^{m-m'}o+\sum_{j\in C}e^{s_j-m'}v_j.
+$$
+
+Start with empty sums. The first tile initializes the maximum and sums directly, avoiding the undefined subtraction $-\infty-(-\infty)$.
+
+In the displayed example, the first tile has scores $1,0.3$ and values $(1,0),(0,1)$. Its maximum is $1$, so its exponential amounts are $1$ and $e^{-0.7}$. We obtain $\ell=1+e^{-0.7}$ and $o=(1,e^{-0.7})$.
+
+The next tile contains a score of $1.2$, raising the maximum by $0.2$. The old exponential amounts must now be measured relative to $1.2$: for example, the first amount changes from $e^{1-1}=1$ to $e^{1-1.2}=e^{-0.2}$. Multiplying both old accumulators by $e^{-0.2}$ makes that change for every earlier term at once. We can then add the new tile's terms without mixing two different scales.
+
+<Lab kind="tiles" />
+
+<Proposition>
+
+For a nonempty set of allowed candidates with finite scores, after all candidates have been read, $o/\ell$ equals the full softmax-weighted value sum in exact real arithmetic.
+
+</Proposition>
+
+<Proof>
+
+The update rescales every earlier term from $e^{s_j-m}$ to $e^{s_j-m'}$ and adds the new terms on that same scale. Thus the two running sums retain their displayed forms. At completion, their common factor $e^{-m}$ cancels in the ratio, leaving $\sum_j e^{s_j}v_j/\sum_j e^{s_j}$.
+
+</Proof>
+
+The stated candidate condition ensures $\ell>0$. An empty row or a row with every candidate masked out has no softmax-weighted average to recover; an implementation must handle that case separately.
+
+This recurrence motivates the online softmax used in [FlashAttention](https://arxiv.org/abs/2205.14135). The practical algorithm organizes tiles around the GPU memory hierarchy and handles many rows. It avoids materializing the whole attention matrix in high-bandwidth memory; dense full attention still requires quadratic comparison arithmetic. “Exact attention” here does not mean every floating-point implementation produces identical bits.
+
+## Implementation notes
+
+The [official FlashAttention repository](https://github.com/Dao-AILab/flash-attention) documents FlashAttention-4 using CuTeDSL for Hopper and Blackwell. Its supported kernels and hardware requirements matter more than the version name alone.
+
+[PagedAttention](https://arxiv.org/abs/2309.06180) addresses allocation of KV storage in blocks. [vLLM prefix caching](https://docs.vllm.ai/en/stable/features/automatic_prefix_caching/) can reuse a matching prefix across requests. These complement the calculations above: allocation, cross-request reuse, and numerical attention are separate questions.
+
+We can now locate three changes without confusing them. Caching remembers old projected rows. GQA changes how many heads produce those rows. Tiled attention changes how comparisons and sums move through memory. We have still stored the numbers at a specified precision. The next essay asks how many bits they require, and what happens when we discard some of those distinctions.

@@ -1,0 +1,162 @@
+Consider the question “Who chased whom?” We know the event we want described: the dog chased the cat. Pre-training has taught a model to assign probabilities to continuations of text. It has not, by that objective alone, specified that this request should receive a direct answer rather than a repetition, a quotation, or a discussion of chasing in general.
+
+The architecture already allows an answer to depend on the question. What we need now is evidence about the response we want, and a loss that uses that evidence to change the parameters. The most direct evidence is an example: here is the request, and here is a suitable answer. We shall begin there. Only when the limitation of that evidence becomes clear will we introduce comparisons between answers and rewards for generated ones.
+
+**Post-training** refers here to further training after the broad predictive stage. It need not introduce a new kind of layer. We still evaluate conditional token probabilities and differentiate a loss; the choice of examples and objective determines which behavior the updates encourage.
+
+## Supervised fine-tuning
+
+Take a prompt $x$ and a demonstrated response $y$. Their serialization might contain a user marker, the request, an assistant marker, and the answer. These markers allow the model to distinguish text it has been given from text it is expected to produce. In our toy example, the answer is “The dog chased the cat.” Real training data must also supply enough context to establish what the answer should be; the short request in the diagram is chosen to keep the token boundary visible.
+
+The pre-training loss already gives us a way to encourage the demonstrated tokens: penalize the model when it gives them little probability. We can apply that calculation to the serialized conversation. But we should first decide which targets we are assessing. Is our example asking the model to reproduce the request, or to answer it?
+
+If we choose the response targets, write $m_i=1$ when the target $t_{i+1}$ belongs to the demonstrated response and $m_i=0$ otherwise. For $M=\sum_i m_i>0$, the averaged loss is
+
+$$
+\mathcal L_{\mathrm{SFT}}=-\frac1M\sum_i m_i\log p_\theta(t_{i+1}\mid t_{0:i}).
+$$
+
+This is **supervised fine-tuning**, or **SFT**: the desired response supplies the targets for further parameter updates. The mask selects the terms; it does not change what a conditional probability means. Including a response-ending marker can also teach the model when the response is complete.
+
+The row containing Assistant: predicts the first answer token, The. It contributes response loss even though its input token is a role marker. In the illustration, select that row and inspect the prefix, target, and included loss term before collecting the average.
+
+<ExtensionStudy kind="supervision" />
+
+The diagram's token probabilities are provided to isolate this calculation, rather than obtained from a trained assistant. The response-only setting includes six targets, including the ending marker; the all-target setting includes eleven. Switching the setting changes both the included terms and the number by which their sum is divided.
+
+## Context and loss masks
+
+There is a possible misunderstanding in “do not train on the prompt.” If we removed the prompt from attention, we would remove the very request that should determine the answer. Omitting its direct prediction losses serves a different purpose.
+
+The **attention mask** determines which input positions a representation can read. The **loss mask** determines which next-token predictions are assessed against targets. At the Assistant: row, the representation can read the earlier request while its prediction is assessed against the first answer token. The two masks refer to different parts of the same computation.
+
+Nor does omitting a direct prompt loss freeze the model's treatment of the prompt. The answer loss can depend on computations involving prompt representations, and its derivatives can reach the shared parameters used in those computations. We have selected the behavior to assess without disconnecting the information needed to produce it.
+
+The demonstration now has a complete interpretation: read the request, predict the demonstrated answer, and update the parameters from those answer losses. Yet it still records only one desired continuation. What should we do when we can compare two answers more readily than write a single ideal one?
+
+## Preference comparisons
+
+Suppose one response describes the event correctly and another reverses who chased whom. Both are grammatical. A demonstration encourages the recorded answer, but does not explicitly say how it should be favored over this particular alternative. A comparison provides that missing relation.
+
+A **preference example** contains a prompt $x$, a preferred response $y_w$, and a less preferred response $y_l$. The subscripts mean winner and loser in this recorded comparison. For an open-ended question, the preference may concern clarity, relevance, or style as well as correctness. It is evidence from an annotation, rather than a universal ordering of responses.
+
+Our model assigns probabilities to tokens, while the annotation compares complete answers. We therefore need the probability of a complete response. Write $\pi_\theta(y\mid x)$ for that probability. By the autoregressive factorization,
+
+$$
+\pi_\theta(y\mid x)=\prod_{r=1}^{|y|}p_\theta(y_r\mid x,y_{<r}),\qquad
+\log\pi_\theta(y\mid x)=\sum_{r=1}^{|y|}\log p_\theta(y_r\mid x,y_{<r}).
+$$
+
+Here the complete token sequence includes its chosen ending convention. The model evaluates each answer using that answer's preceding tokens. Summing log-probabilities is not the same as averaging them: dividing by the response length would change the quantity we are comparing.
+
+The ratio $\pi_\theta(y_w\mid x)/\pi_\theta(y_l\mid x)$ measures their relative probability. If it is two, the preferred response has twice the probability of the other. But a ratio of two after an update means something different if it was already ten beforehand. We need a starting comparison against which to measure the change.
+
+## Direct preference optimization
+
+Keep a frozen copy of a starting model, called the **reference policy** $\pi_{\mathrm{ref}}$. Its parameters remain fixed during these updates. For our two answers, form their log probability ratio in each model:
+
+$$
+L_\theta=\log\frac{\pi_\theta(y_w\mid x)}{\pi_\theta(y_l\mid x)},\qquad
+L_{\mathrm{ref}}=\log\frac{\pi_{\mathrm{ref}}(y_w\mid x)}{\pi_{\mathrm{ref}}(y_l\mid x)}.
+$$
+
+We want to distinguish the preference already expressed by the reference from the change made during this stage. Subtract the two comparisons:
+
+$$
+D=L_\theta-L_{\mathrm{ref}}
+=\log\frac{\pi_\theta(y_w\mid x)}{\pi_{\mathrm{ref}}(y_w\mid x)}
+-\log\frac{\pi_\theta(y_l\mid x)}{\pi_{\mathrm{ref}}(y_l\mid x)}.
+$$
+
+Assume these response probabilities are positive, so the logarithms are defined. If both models give probabilities $0.5,0.5$ in a two-answer toy distribution, their ratios are one and $D=0$. If the current probabilities become $0.6,0.4$ while the reference stays fixed, then
+
+$$
+D=\log(0.6/0.4)-\log(0.5/0.5)=\log(1.5)\approx0.405.
+$$
+
+The preferred answer has gained relative probability. This is the role of the reference-adjusted margin. It still leaves a question: which loss will encourage a positive margin on the annotated comparisons?
+
+One construction uses a pairwise preference model,
+
+$$
+P(y_w\succ y_l\mid x)=\sigma(\beta D),\qquad
+\sigma(a)=\frac1{1+e^{-a}},\qquad \beta>0.
+$$
+
+At zero margin this assigns equal probability to the two possible orderings. Increasing $D$ increases the probability assigned to the recorded ordering. Its negative log-likelihood therefore gives the loss
+
+$$
+\ell_{\mathrm{DPO}}=-\log\sigma(\beta D).
+$$
+
+This is **direct preference optimization**, or **DPO**. The [original paper](https://arxiv.org/abs/2305.18290) derives this form from a pairwise preference model and a reward objective regularized against a reference policy. The reference and the positive scale $\beta$ belong to that construction; subtracting an arbitrary baseline is not by itself its derivation. The sigmoid models an annotated preference, rather than certifying that an answer is true.
+
+We can now follow an actual update. The reference sets the starting comparison, the current model supplies the response probabilities, and the loss penalizes insufficient relative probability for the preferred answer.
+
+## A preference update
+
+Use a policy with only two possible complete responses. Give $y_w$ logit $u$ and $y_l$ logit zero. Normalizing these two logits gives
+
+$$
+\pi_u(y_w\mid x)=\frac{e^u}{e^u+1}=\sigma(u),\qquad
+\pi_u(y_l\mid x)=\frac1{e^u+1}=1-\sigma(u).
+$$
+
+Their probability ratio is $e^u$, so its logarithm is $u$. If the reference probability of $y_w$ is $\rho\in(0,1)$, its log ratio is $\log(\rho/(1-\rho))$. Thus our margin becomes
+
+$$
+D=u-\log\frac{\rho}{1-\rho}.
+$$
+
+This reduction works because the toy policy has only two complete responses. A language model with a large token vocabulary still needs the full response probabilities defined above.
+
+The derivative of $-\log\sigma(a)$ with respect to $a$ is $\sigma(a)-1$. Since $a=\beta D$ and $dD/du=1$, the chain rule gives
+
+$$
+\frac{d\ell}{du}=\beta\bigl(\sigma(\beta D)-1\bigr).
+$$
+
+Begin at $u=0$, $\rho=1/2$, and $\beta=1$. The margin is zero and $\sigma(0)=1/2$, so the derivative is $-1/2$. With learning rate $\eta=0.5$, gradient descent gives
+
+$$
+u_{\mathrm{new}}=u-\eta\frac{d\ell}{du}
+=0-0.5(-0.5)=0.25.
+$$
+
+The preferred answer's probability becomes $\sigma(0.25)\approx0.562$. The other receives approximately $0.438$. The reference remains at $0.5,0.5$: it participates in the comparison but receives no update.
+
+<ExtensionStudy kind="preference" />
+
+Inspect the pre-update probabilities, log ratios, and derivative, then follow the update into the new policy. Changing $\rho$ changes what counts as a gain relative to the reference; changing $\beta$ changes the loss and derivative. Replay repeats the displayed calculation. The separate update button performs another optimization step.
+
+The default experiment begins with the current and reference probabilities both at $0.5$. When we change the reference control, the current policy still starts at $u=0$, and the displayed updates are recomputed from that starting point. This deliberate separation lets us inspect the reference's effect; the varied reference need not be a copy of the toy policy's initial parameters.
+
+Repeating this one annotation can drive its chosen answer toward overwhelming probability in the toy policy. It does not teach a useful answer to every other prompt. As in pre-training, lowering the training loss must be distinguished from behavior on unseen examples.
+
+## Reinforcement learning
+
+Our preference calculation begins with two recorded answers. Now consider a question with many possible responses, where we can assess an answer after the model generates it. A mathematical answer might be checked; a piece of code might be run against tests; a response might receive a score from a learned reward model. This evidence evaluates a generated outcome instead of supplying every token of an ideal answer.
+
+The current policy generates a response $y$ to a prompt $x$, and an evaluator supplies a reward $r(x,y)$. For a fixed prompt, the objective is to increase the expected reward
+
+$$
+J(\theta)=\sum_y\pi_\theta(y\mid x)r(x,y).
+$$
+
+In a finite toy response space with a fixed reward function and positive policy probabilities, differentiate the sum. Using $\nabla\pi_\theta=\pi_\theta\nabla\log\pi_\theta$ gives
+
+$$
+\nabla_\theta J
+=\mathbb E_{y\sim\pi_\theta(\cdot\mid x)}
+\bigl[r(x,y)\nabla_\theta\log\pi_\theta(y\mid x)\bigr].
+$$
+
+This identity lets a sampled response and its reward contribute to a parameter update without enumerating every possible response. For an actual language model, using the identity requires the corresponding conditions on its response distribution and objective.
+
+A baseline can replace $r$ by $r-b(x)$ without changing this expected gradient, because $b(x)\nabla_\theta\sum_y\pi_\theta(y\mid x)=0$. It can reduce the variability of sampled updates: a score can be judged relative to what is typical for the prompt. Practical methods add further choices, including reference penalties, clipping, and how samples are collected.
+
+The evaluator is now part of the learning problem. A test rewards passing that test; a reward model rewards what it has learned to score. Neither automatically includes every property we wanted in a response. Improving the measured reward and improving the intended behavior must therefore be examined together.
+
+The [InstructGPT paper](https://arxiv.org/abs/2203.02155) uses demonstrations, preference-based reward modeling, and reinforcement learning as distinct stages. [DeepSeek-R1](https://arxiv.org/abs/2501.12948) studies reinforcement learning for reasoning behavior. These are particular training procedures, rather than a requirement that every model follow one fixed sequence. The [SFT implementation documentation](https://huggingface.co/docs/trl/sft_trainer) provides a concrete reference for the loss masks examined earlier.
+
+We began with a response we could demonstrate, then considered answers we could compare, and finally outcomes we could evaluate after generation. Each supplies different evidence for changing the same learned parameters. The next essay asks whether such adaptation requires an unrestricted update to every entry of every large matrix. That question leads to LoRA.

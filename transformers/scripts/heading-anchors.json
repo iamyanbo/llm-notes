@@ -1,0 +1,85 @@
+{
+  "rope": {
+    "Additive position vectors": "a-position-vector-is-one-possible-choice",
+    "Rotations in the plane": "first-rotate-a-vector-in-the-plane",
+    "Position-dependent rotations": "let-position-determine-the-angle",
+    "Relative-position comparisons": "why-only-the-difference-remains",
+    "Coordinate pairs within a head": "more-than-one-coordinate-pair",
+    "RoPE in attention": "returning-to-attention"
+  },
+  "attention": {
+    "Receptive fields across layers": "information-can-travel-through-several-layers",
+    "Sparse attention": "sparse-attention-can-preserve-selected-long-connections",
+    "Kernel attention": "linear-attention-begins-with-the-weighted-sum",
+    "The recurrent state": "a-matrix-remembers-the-accumulated-products",
+    "Softmax approximation and other variants": "approximating-softmax-and-combining-constructions"
+  },
+  "experts": {
+    "The router": "a-router-has-a-numerical-task",
+    "Top-k routing": "follow-one-token-through-two-experts",
+    "Expert specialization": "experts-need-not-be-subject-specialists",
+    "Load balancing and communication": "a-failure-the-parameter-count-cannot-see",
+    "Routing variants and shared experts": "current-architectures-make-additional-choices"
+  },
+  "multimodal": {
+    "Pixel values": "a-pixel-is-a-measurement-not-a-token-label",
+    "Image patches": "a-patch-collects-a-small-region",
+    "Patch features": "follow-a-patch-into-feature-space",
+    "Connecting vision and language": "connect-representations-of-the-same-width",
+    "Learning cross-modal relations": "compatible-dimensions-do-not-establish-meaning",
+    "Vision encoders and positions": "a-concrete-implementation-has-additional-choices"
+  },
+  "pretraining": {
+    "Causal prediction targets": "one-text-supplies-several-prediction-problems",
+    "Prediction loss": "a-probability-gives-us-a-quantity-to-improve",
+    "The output-map gradient": "from-probabilities-back-to-a-matrix",
+    "A parameter update": "follow-one-update",
+    "Training and evaluation": "a-lower-training-loss-is-not-the-whole-result",
+    "Compute and data": "why-pretraining-is-a-large-undertaking"
+  },
+  "posttraining": {
+    "Supervised fine-tuning": "a-demonstration-specifies-a-continuation",
+    "Context and loss masks": "a-loss-mask-is-not-an-attention-mask",
+    "Preference comparisons": "a-demonstration-need-not-settle-a-preference",
+    "Direct preference optimization": "compare-changes-in-relative-support",
+    "A preference update": "a-complete-tworesponse-example",
+    "Reinforcement learning": "where-reinforcement-learning-enters"
+  },
+  "lora": {
+    "Rank-one updates": "one-measured-feature-one-output-direction",
+    "Low-rank updates": "allow-several-measured-features",
+    "The rank bound": "what-the-rank-restriction-proves",
+    "Parameter counts": "count-the-learned-entries",
+    "Adapter initialization": "a-zero-initial-modification-can-still-learn",
+    "Merging an adapter": "combining-the-paths-for-inference"
+  },
+  "memory": {
+    "Cached keys and values": "what-a-new-query-still-needs",
+    "KV-cache memory": "keeping-values-has-a-cost",
+    "Grouped-query attention": "several-queries-can-share-a-keyvalue-head",
+    "Tiled attention": "we-need-not-save-every-comparison"
+  },
+  "precision": {
+    "The quantization grid": "an-integer-needs-a-scale",
+    "Quantized matrix multiplication": "four-weights-are-enough-to-expose-the-difference",
+    "Reconstruction error": "a-local-error-bound",
+    "Weight and cache precision": "weight-precision-is-only-one-memory-category",
+    "Calibration": "why-calibration-can-help"
+  },
+  "thought": {
+    "Intermediate context": "an-intermediate-result-becomes-input",
+    "The probability of a trace": "describe-the-probability-of-a-trace-and-an-answer",
+    "Prompting, training, and selection": "prompting-training-and-selection-are-different-operations",
+    "Errors in intermediate steps": "a-longer-prefix-can-carry-a-mistake",
+    "Faithfulness": "an-explanation-is-not-a-complete-internal-record",
+    "Inference cost": "what-remains-fixed-and-what-grows"
+  },
+  "speculation": {
+    "Draft and target distributions": "two-distributions-over-the-same-candidates",
+    "The residual distribution": "rejection-tells-us-what-is-missing",
+    "Exactness of the correction": "why-the-correction-recovers-the-target",
+    "Parallel verification": "several-proposals-can-be-checked-together",
+    "Greedy verification": "matching-greedy-tokens-is-a-different-mode",
+    "When speculation helps": "what-determines-whether-this-helps"
+  }
+}

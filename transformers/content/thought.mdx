@@ -1,0 +1,83 @@
+Consider calculating $17\times23$. We can state the answer immediately, or separate the second factor into $20+3$, calculate two products, and add them. The intermediate calculations give later steps quantities they can use. This familiar practice suggests a question about a language model: what changes when intermediate steps are written into the sequence it is generating?
+
+The decoder already provides a mechanism for reading those steps. Once a token has been generated and appended, it becomes part of the prefix for the next prediction. We do not need to insert a new reasoning block into the transformer diagram to describe this change. We need to follow the ordinary generation loop for longer, with different text in its context.
+
+This makes intermediate text computationally available. It does not establish that any particular text is correct, that a model knows how to use it, or that the text faithfully describes all the internal causes of its answer. These questions should remain separate as we develop the construction.
+
+## Intermediate context
+
+For our multiplication, a possible written calculation is
+
+$$
+17\times20=340,\qquad
+17\times3=51,\qquad
+340+51=391.
+$$
+
+A decoder producing this text does not know the future part of the trace in advance. It predicts a next token from the current prefix, appends a chosen token, and repeats. By the time it begins the final addition, the two earlier products may be present in the context.
+
+In the animation below, text is grouped into readable chunks rather than presented as tokenizer-specific tokens. Each chunk represents several potential token-generation steps. The arithmetic and the trace are authored locally; no trained model is being asked to solve the problem.
+
+<ExtensionStudy kind="thought" />
+
+Follow a chunk as it moves from the proposed continuation into the prefix. The earlier text remains available at later stages. Changing either factor recomputes the arithmetic, while selecting the faulty trace introduces a specific error in the second partial product.
+
+The point of this illustration is modest but useful. Intermediate text is not merely printed beside a computation for the reader's benefit. In autoregressive generation, it can be read by the subsequent computation. Whether a learned model uses it effectively is an empirical question.
+
+## The probability of a trace
+
+Fix a boundary rule, such as a designated end-of-trace marker, so that a complete trace can be distinguished from a prefix that will continue. Let $x$ be the prompt, $r$ a complete finite trace, and $a$ the answer sequence. The probability of $r$ includes reaching its boundary. Conditional probability gives
+
+$$
+p_\theta(r,a\mid x)
+=p_\theta(r\mid x)\,p_\theta(a\mid x,r).
+$$
+
+Both factors themselves decompose into next-token probabilities. The second factor makes the role of the written trace explicit: the answer is generated with $r$ available as context.
+
+If we allow several possible traces and ask only about the answer, we must sum over those alternatives. Assume the procedure reaches the answer boundary with probability one, and the alternatives include every complete terminating trace. Then
+
+$$
+p_\theta(a\mid x)
+=\sum_r p_\theta(r\mid x)\,p_\theta(a\mid x,r).
+$$
+
+This is the law of total probability. Here the left-hand side denotes the answer distribution under the trace-then-answer procedure. Generating an answer directly, without first generating $r$, uses a different context and need not give the same distribution. The identity does not require every trace leading to a correct answer to be correct itself. Nor does one especially convincing trace account for all the probability assigned to that answer.
+
+As a small numerical example, suppose two traces have probabilities $0.7$ and $0.3$. If the conditional probability of a correct answer is $0.9$ after the first and $0.2$ after the second, the total correct-answer probability is $0.7\cdot0.9+0.3\cdot0.2=0.69$. The numbers are chosen to expose the mixture, not measured from a model. A more frequently selected trace can matter as much as the quality of the final conditional prediction.
+
+## Prompting, training, and selection
+
+One way to encourage intermediate text is to show worked examples in the prompt or request an explanation. The parameters stay fixed, while the supplied context changes the conditional distribution. The [original chain-of-thought prompting paper](https://arxiv.org/abs/2201.11903) studies demonstrations containing intermediate steps.
+
+A different approach trains on worked responses. Supervised fine-tuning can assign loss to their intermediate tokens as well as to the answer. Reinforcement learning may reward outcomes that emerge from longer generated trajectories. These procedures change the parameters, using objectives of the kind developed in the preceding chapters.
+
+Finally, an inference procedure can sample several candidate traces and choose or aggregate their answers. Verification, voting, and search are additional algorithms around the model. They need their own compute budgets and failure analysis. We should not call all three operations “chain of thought” and assume they have the same mechanism.
+
+The architecture, learned parameters, prompt, and inference procedure each contribute to the observed behavior. Naming the intermediate text identifies one part of that system.
+
+## Errors in intermediate steps
+
+Return to the faulty trace. If the second partial product is written as $61$ instead of $51$, the subsequent addition $340+61=401$ is internally consistent with the written numbers and still gives the wrong result for the original multiplication.
+
+This failure distinguishes checking a local step from checking the original task. The addition is correct for its inputs. The preceding multiplication supplied an incorrect input. A final answer check reveals the outcome, while step checks locate where the error entered.
+
+The verifier in the illustration performs explicit integer arithmetic. It has access to rules that make this particular task easy to check. A verifier for an open-ended explanation may lack such a reliable criterion, and agreement between two models is not a substitute for one.
+
+More generated tokens therefore create both an opportunity and a risk of propagation. They can provide useful quantities, decompositions, or plans. They can also establish a mistaken premise which later steps reuse fluently. The number of steps alone does not settle which occurred.
+
+## Faithfulness
+
+The text a model produces is an output of its computation. We cannot assume that it lists every feature or contextual influence responsible for the answer. A sensible explanation can coexist with an unmentioned influence, and an answer may sometimes be reached before a convincing explanation is produced.
+
+[Research on unfaithful chain-of-thought explanations](https://arxiv.org/abs/2305.04388) investigates this distinction through controlled prompt influences. A [later study of reasoning models](https://arxiv.org/abs/2505.05410) examines whether influential hints are acknowledged in their generated reasoning. These experiments concern particular models and conditions; they motivate testing faithfulness rather than assuming it from the presence of a trace.
+
+This is where the architectural understanding remains useful. We know how intermediate tokens can enter subsequent representations. Establishing which internal computations actually supported an answer requires additional evidence, such as controlled interventions and inspection of model behavior. The written trace alone does not supply that evidence.
+
+## Inference cost
+
+During ordinary generation the learned matrices remain fixed. The sequence grows, positions are assigned to new tokens, and later queries can read a longer prefix subject to the causal mask. A key/value cache avoids recomputing earlier projected rows, but newly generated intermediate tokens still require their own model evaluations and storage.
+
+This connects the chapter back to memory and inference cost. We can spend more computation on a response without making the model's parameter count larger. Whether that expenditure helps depends on the task, the learned behavior, and how the procedure uses its extra steps.
+
+The extra generated steps still obey autoregressive dependence. The next essay asks whether a cheaper model can propose several future tokens, then use the target model to verify them without changing the desired sampling distribution.

@@ -1,0 +1,141 @@
+Consider adapting a trained model to a new kind of response. The learning objective tells us which direction would reduce the loss, but a full update may involve billions of parameters. Keeping a separate adapted copy of every large matrix is expensive, even if the change we need has a much simpler structure.
+
+We can separate the original map from its modification. If $W_0$ is the trained matrix, write the adapted map as $W_0+\Delta W$. Freezing $W_0$ preserves its entries during this stage; our task becomes learning the additional map $\Delta W$.
+
+This decomposition alone saves nothing. An unrestricted $\Delta W$ is as large as $W_0$. We need a restriction that makes the modification smaller to describe, and we should understand the behavior that restriction excludes before calling it an advantage.
+
+## Rank-one updates
+
+Begin with an input column vector $x\in\mathbb R^{d_{\mathrm{in}}}$. A row vector $a^{\mathsf T}$ can measure one scalar feature of this input:
+
+$$
+z=a^{\mathsf T}x.
+$$
+
+A column vector $b\in\mathbb R^{d_{\mathrm{out}}}$ can then turn that scalar into an output change $bz$. The resulting modification is
+
+$$
+\Delta W x=b(a^{\mathsf T}x),\qquad \Delta W=ba^{\mathsf T}.
+$$
+
+The input determines the amount and sign of the change. Its output direction is always along $b$. Two different inputs may receive different changes, but those changes lie on the same line. This gives us a concrete meaning for a rank-one modification.
+
+For $a^{\mathsf T}=(1,-1)$ and $b=(1/2,1)^{\mathsf T}$, an input $x=(1,2)^{\mathsf T}$ gives $z=-1$ and a change $(-1/2,-1)^{\mathsf T}$. With $W_0$ equal to the identity, the original output is $(1,2)^{\mathsf T}$ and the adapted output is $(1/2,1)^{\mathsf T}$.
+
+## Low-rank updates
+
+If one output direction is too restrictive, we can collect $r$ scalar features. Let
+
+$$
+A\in\mathbb R^{r\times d_{\mathrm{in}}},\qquad
+B\in\mathbb R^{d_{\mathrm{out}}\times r}.
+$$
+
+The map $A$ takes the input to $r$ coordinates. The columns of $B$ specify how those coordinates contribute to the output. With an adapter scale $s$, the complete computation is
+
+$$
+h=W_0x+sB(Ax).
+$$
+
+Both paths receive the same original input. The smaller path goes through $A$ and then $B$; the base path goes directly through $W_0$. Their outputs are added in the common output space. Passing the base output into $A$ would define a different construction.
+
+This is **low-rank adaptation**, or **LoRA**. A common scaling convention is $s=\alpha/r$, where $\alpha$ is a chosen adapter parameter. We display $s$ directly below, and report its corresponding $\alpha$, so changes in rank do not conceal a simultaneous change of scale.
+
+<ExtensionStudy kind="lora" />
+
+Follow the input into both paths, inspect the intermediate $r$-coordinate vector, then add the two output vectors. The optional geometric view uses the same numbers. For rank one, the modification remains on a single line as you move the input around the plane; the adapted output itself need not remain on that line.
+
+The rank-two setting adds a second measured feature and a second output direction. It is a different hand-chosen modification, not the result of training the rank-one example for longer. The illustration is intended to expose the two maps and their shapes.
+
+## The rank bound
+
+The output $BAx$ is a combination of columns of $B$. It therefore lies in their **span**, the set of their linear combinations. The **rank** of a linear map is the dimension of its image: the number of independent output directions it can produce. This makes the restriction independent of the particular input we happened to choose.
+
+<Proposition>
+
+For $A\in\mathbb R^{r\times d_{\mathrm{in}}}$ and $B\in\mathbb R^{d_{\mathrm{out}}\times r}$,
+
+$$
+\operatorname{rank}(BA)\le r.
+$$
+
+</Proposition>
+
+<Proof>
+
+Every vector in the image of $BA$ has the form $Bz$ for some $z=Ax\in\mathbb R^r$. The image is therefore contained in the span of the $r$ columns of $B$. That span has dimension at most $r$, which proves the bound.
+
+</Proof>
+
+The proposition restricts the *update*. It does not say that $W_0+sBA$, the attention layer, or the entire model has rank at most $r$.
+
+There is also a simple failure case. Suppose a desired two-dimensional modification maps $(1,0)^{\mathsf T}$ to $(1,0)^{\mathsf T}$ and $(0,1)^{\mathsf T}$ to $(0,1)^{\mathsf T}$. Those two outputs are independent. A rank-one modification cannot produce both, because all its outputs must lie on one line. Increasing rank enlarges what the adapter can express; a low rank is a modeling choice rather than a theorem about every useful adaptation.
+
+## Parameter counts
+
+An unrestricted matrix has $d_{\mathrm{out}}d_{\mathrm{in}}$ entries. The two LoRA factors have
+
+$$
+r\,d_{\mathrm{in}}+d_{\mathrm{out}}r
+=r(d_{\mathrm{in}}+d_{\mathrm{out}})
+$$
+
+trainable entries. This is smaller when $r$ is sufficiently small relative to the matrix dimensions. At a square width of $4096$ and rank $8$, it gives $65536$ entries instead of $16777216$, a factor of $256$ for this matrix's trainable parameter count.
+
+<Note>
+
+My two-by-two example is a poor advertisement for saving memory: its rank-one adapter already needs four parameters. It does, however, let us see where every number goes.
+
+</Note>
+
+The frozen base matrix still occupies memory and still participates in the forward calculation. Other trainable modules, optimizer state, precision, and intermediate activations also affect a real training run. The parameter count isolates one saving; it is not a measurement of total memory or elapsed time.
+
+## Adapter initialization
+
+We may want adaptation to begin with the original model's output. Setting $B=0$ achieves this while allowing $A$ to contain nonzero entries. The product $BA$ is then zero, but the measured features $Ax$ are available for learning the first change in $B$.
+
+Why not set both factors to zero? Consider the toy squared-error loss
+
+$$
+\ell=\frac12\|h-h_*\|^2,
+\qquad e=h-h_*.
+$$
+
+For fixed input $x$, follow the chain rule through one entry of each factor. Write $z=Ax$ for the intermediate vector. Since $h_a=(W_0x)_a+s\sum_b B_{ab}z_b$, changing $B_{ab}$ changes output coordinate $a$ by $sz_b$. Its loss derivative is therefore $\partial\ell/\partial B_{ab}=s e_a z_b$.
+
+An entry $A_{bc}$ first changes intermediate coordinate $z_b$ by $x_c$. That change reaches every output coordinate through column $b$ of $B$, so
+
+$$
+\frac{\partial\ell}{\partial A_{bc}}
+=s\sum_a e_aB_{ab}x_c
+=s(B^{\mathsf T}e)_b x_c.
+$$
+
+Collecting these entrywise derivatives gives the matrix gradients
+
+$$
+\nabla_B\ell=s\,e(Ax)^{\mathsf T},\qquad
+\nabla_A\ell=s\,(B^{\mathsf T}e)x^{\mathsf T}.
+$$
+
+The error vector measures the output mismatch, while the input and intermediate features determine how each factor entry can affect that output.
+
+If both factors are zero, both gradients are zero. If only $B$ is zero, its gradient can be nonzero because $Ax$ can be nonzero. Once $B$ changes, $A$ can receive a gradient too.
+
+<ExtensionStudy kind="lora-init" />
+
+The illustration uses target $h_*=(2,3)^{\mathsf T}$ and computes these gradients directly. A zero gradient can also arise from a particular input, zero scale, or already-correct output. The initialization argument establishes a possibility to learn, not that every sample must move both factors.
+
+## Merging an adapter
+
+Because the two factor maps are linear, distributivity gives
+
+$$
+W_0x+sB(Ax)=(W_0+sBA)x.
+$$
+
+Thus, for a fixed adapter, we can form a merged matrix and use a single map. The illustration displays the merged result alongside the two-path result. They agree in exact real arithmetic; numerical precision, quantized storage, and implementation details can affect the practical merge.
+
+The [original LoRA paper](https://arxiv.org/abs/2106.09685) develops the adaptation method. The [official PEFT guide](https://huggingface.co/docs/peft/developer_guides/lora) describes initialization, scaling variants, target modules, and merging in a concrete implementation. Its default initialization uses a nonzero $A$ and zero $B$; the original paper and library differ in the distribution used for $A$.
+
+LoRA changes how parameters are represented and trained. We now leave learning and turn to evaluation with fixed parameters. As a prefix grows, its earlier causal rows have unchanged inputs. The next essay asks which of their calculations can be kept for the following token.

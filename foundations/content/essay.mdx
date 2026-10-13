@@ -1,0 +1,1991 @@
+<Passage id="p-84a3f1ac-6a89-470c-9ff8-3e0f16c57d87">
+
+## Introduction
+
+</Passage>
+
+<Passage id="p-5a8dcce9-c2db-4a19-8702-cc895efea987">
+
+The purpose of these notes is to develop the theoretical and mathematical ideas underlying attention and the transformer, beginning with the problem of representing language.
+
+</Passage>
+
+<Passage id="p-89b3c8c2-0e68-42b6-92f2-f1245081a42b">
+
+<AuthorNote title="Why begin with language?">
+
+Consider how a sentence comes to describe an event. A reader can often distinguish who acts, what happens, and who is affected, even when the same words occur in a different arrangement. Explaining how these relations contribute to meaning gives us a starting point for asking what a model must represent.
+
+</AuthorNote>
+
+</Passage>
+
+<Passage id="p-cd1ecfc8-485b-4a4d-a891-93773cbedc71">
+
+As an initial motivation, observe that a word is seldom interpreted in isolation. The surrounding words help determine both its meaning and its role in a sentence, while the preceding discourse and the circumstances in which it is used may further influence its interpretation. Even sentences containing exactly the same words can describe different events. Knowledge of the individual words therefore leaves an essential part of the problem unresolved: how their relationships contribute to the meaning of the whole.
+
+</Passage>
+
+<Passage id="p-578b3c96-188e-45fc-8bc5-e0bb579dd3b1">
+
+To construct a model, we need a numerical *representation* of the text. The choice matters: some representations retain word order, while others discard it. Mathematics allows us to state precisely which distinctions remain available to the model. It also gives us a language for examining how the representation of a word can depend on its *context*.
+
+</Passage>
+
+<Passage id="p-b64360ad-ee54-4eff-89f2-87a804c50086">
+
+Before choosing a construction, we need to examine what it must distinguish. Familiar sentences and the relationships we recognize among their words provide a starting point. From these examples, we can develop elementary representations and examine where they are insufficient. These difficulties will motivate attention and, subsequently, the [transformer architecture](https://arxiv.org/abs/1706.03762).
+
+</Passage>
+
+<Passage id="p-361e7690-1cb0-43a6-8597-be32b100a8db">
+
+</Passage>
+
+<Passage id="p-a02c22da-6287-4c6e-a6ca-b66f4bd17b8f">
+
+## Prerequisites
+
+</Passage>
+
+<Passage id="p-ab9871d9-030c-4555-b7e9-f83f28d3d1d1">
+
+The reader is assumed to be familiar with the following:
+
+</Passage>
+
+- **Elementary mathematical language:** sets, functions, finite sequences, summation notation, and reading a short proof.
+- **Linear algebra:** vectors, matrices, dot products, matrix multiplication, and linear transformations.
+- **Calculus:** derivatives, partial derivatives, gradients, and the chain rule.
+- **Elementary probability:** discrete distributions, conditional probability, and expectation.
+
+<Passage id="p-a9d8cd59-6375-4b76-8dfb-c2093237d74e">
+
+We also assume the basic principles of machine learning: a parameterized model, a loss function, training by gradient descent, and evaluation on unseen examples. Familiarity with a simple feed-forward neural network will be useful. The concepts specific to language modeling will be developed as they arise.
+
+</Passage>
+
+<Passage id="p-37de5ceb-7da4-4872-a6ec-531d206f1172">
+
+Programming is not required to follow the mathematics or use the interactive examples. Familiarity with arrays and numerical computation will be useful if you wish to implement the constructions yourself.
+
+</Passage>
+
+<Passage id="p-3d17f4bd-0fcf-4846-a30f-4e898a42a696">
+
+## 1 Meaning and structure
+
+</Passage>
+
+### 1.1 Grammatical roles
+
+<Passage id="p-7956985e-49e3-4b81-969a-51e22bc8c3a9">
+
+Consider the two sentences:
+
+</Passage>
+
+<Passage id="p-ad39f0e5-a635-41ab-a971-ddf1fc235cfd">
+
+> The **dog** chased the cat.
+>
+> The **cat** chased the dog.
+
+</Passage>
+
+<Passage id="p-6a4d8768-6877-442f-927e-8742d9581d6b">
+
+<ChaseIllustration />
+
+</Passage>
+
+<Passage id="p-115ee310-00ba-4d1f-8897-f13378c586ff">
+
+Both contain the *same words*, with the same number of occurrences of each. Nevertheless, they describe *different events*. In the first, the dog performs the action and the cat receives it; in the second, these roles are exchanged.
+
+</Passage>
+
+<Passage id="p-fe841613-b94b-4260-b822-c4689365453a">
+
+<Observation>
+
+A representation that records only which words occur and how often assigns the same description to these two sentences. It therefore loses the distinction between **who chases** and **who is chased**. To preserve this distinction, we must retain information about how the words are related.
+
+</Observation>
+
+</Passage>
+
+### 1.2 Grammar as we understand it
+
+<Passage id="p-grammar-motivation">
+
+Consider what is involved in reading the first sentence. We recognize two animals and an action, but we also recognize an arrangement: *the dog* belongs together, *the cat* belongs together, and *chased* relates the two. A reader familiar with English ordinarily makes these distinctions without first stating a rule. To understand what a model should preserve, it is useful to make some of this grammatical knowledge explicit.
+
+</Passage>
+
+<Passage id="p-grammar-word-classes">
+
+We begin with **word classes**, often called parts of speech. In this sentence, *dog* and *cat* are nouns, *chased* is a verb, and *the* is a determiner. These categories describe how words behave in grammatical constructions. For instance, we can form *the dog* or *the cat*, and place either phrase before *chased*. Calling both words nouns captures something they have in common; it does not tell us which animal performs the action.
+
+English also has adjectives, adverbs, prepositions, pronouns, and conjunctions. These classes matter because they constrain how words can combine.
+
+</Passage>
+
+<Passage id="p-grammar-phrases">
+
+Words also combine into **phrases**, such as *the small dog*. A representation must allow us to consider these groupings and the roles they play in the sentence.
+
+</Passage>
+
+<Passage id="p-grammar-functions">
+
+In “The dog chased the cat,” *the dog* is the **subject** and *the cat* the **direct object**. Exchanging the animals exchanges these grammatical functions. Word order and agreement, as in *the dog chases* and *the dogs chase*, supply further constraints that we must take into account.
+
+</Passage>
+
+<Passage id="p-grammar-passive">
+
+We must be careful, however, about identifying a grammatical function with a role in the event. Consider:
+
+> The cat was chased by the dog.
+
+Here *the cat* is the subject, although the dog still performs the chasing. The verb construction *was chased*, together with the phrase *by the dog*, allows us to describe the same chasing event as “The dog chased the cat.” The animal doing the chasing is the **agent**; the animal being chased is the affected participant. These descriptions concern the event. Subject and object concern the sentence's grammatical organization. The passive construction shows why we need to distinguish them.
+
+Promotion to grammatical subject has done very little for the cat.
+
+</Passage>
+
+<GrammarExplorer />
+
+<Passage id="p-grammar-machine">
+
+These examples give us requirements for a machine representation. It should allow us to distinguish a word's class, the phrases in which it participates, and the relationships that determine the event being described. We could attempt to supply grammatical rules explicitly, or seek to learn useful relationships from examples. Either approach requires a choice about how the words and their arrangement are made available to the model. To make that choice, we first need to consider what order and context contribute to interpretation.
+
+</Passage>
+
+### 1.3 Word order and grammatical structure
+
+<Passage id="p-815304cf-67cb-46b5-86c0-7cfc7d49a2cb">
+
+Now consider a third arrangement:
+
+</Passage>
+
+<Passage id="p-8c6e1ec4-df13-442d-ab2c-adf98cb18027">
+
+> Cat the chased dog the.
+
+</Passage>
+
+<Passage id="p-7597ae72-cb01-42ef-a7eb-e886641458e1">
+
+Again, the words and their frequencies are unchanged. This time, however, their arrangement does not form an ordinary English sentence. We recognize the individual words and may infer something about the intended subject matter, but we must supply a structure before we can recover a definite statement.
+
+</Passage>
+
+<Passage id="p-546deded-1a28-4247-8ce0-f1586d31fe99">
+
+The contrast is informative. The first two arrangements describe opposite directions of the same action; the third does not form an ordinary English statement. The vocabulary alone does not distinguish these cases.
+
+</Passage>
+
+<SentenceExplorer />
+
+### 1.4 Semantics and context
+
+<Passage id="p-839c8b11-4bbe-4ea9-86d9-abd0f12b1f6e">
+
+These examples distinguish two related questions. *Syntax* concerns grammatical structure: which arrangements are well formed, and how their parts are organized. *Semantics* concerns interpretation: what a sentence means, including the event it describes and the roles of its participants. The first two sentences are both grammatical, yet their meanings differ. To represent this difference, a model must preserve more than the presence of the words.
+
+Grammatical structure alone may also leave an interpretation uncertain. Consider “The dog chased the cat because it was frightened.” The pronoun *it* may refer to either animal; the surrounding discourse can help determine the intended reference. We must therefore ask both how words are related within a sentence and how context contributes to its meaning.
+
+</Passage>
+
+<Passage id="p-32b2cb61-424c-49c9-9d61-e8f1f723553e">
+
+These questions suggest a first requirement for a representation: it must allow us to distinguish who chases whom in our two sentences. This is only one of the distinctions involved in understanding language, but it gives us a concrete place to begin.
+
+</Passage>
+
+<Passage id="p-representations-heading">
+
+## 2 From language to representations
+
+</Passage>
+
+<Passage id="p-representations-motivation">
+
+Consider how we might make the two chasing sentences available to a model. A natural first attempt is to treat each as a list of words, keeping their order. This records the difference we observed without yet explaining how a model could use it. Let us attempt to give this simple construction a mathematical form, then examine the choices it requires.
+
+</Passage>
+
+### 2.1 Tokens and sequences
+
+<Passage id="p-token-motivation">
+
+Consider the list we obtain by separating “The dog chased the cat” at its spaces. Each entry is a whole word, and the list retains the arrangement we wish to distinguish. Before adopting this division, however, we should ask what happens when we encounter a word outside our chosen collection. If we have included *chased*, must we also include *chases* and *chasing* as separate entries?
+
+With whole words as our units, each of these forms would require its own entry. Suppose instead that our collection contains the pieces *chas*, *ed*, *es*, and *ing*. We could represent *chased* as $(\text{chas},\text{ed})$, *chases* as $(\text{chas},\text{es})$, and *chasing* as $(\text{chas},\text{ing})$. A word absent from the collection as a whole could then be represented by a sequence of pieces that are present.
+
+At the extreme, we could use individual characters, though a sentence would then become a much longer list. The choice determines what the model receives as a unit and what it must learn to combine.
+
+We call the units of the chosen division **tokens**. They need not coincide with the grammatical units discussed above: a noun may occupy several tokens. For our chasing sentences, whole words suffice. We can now make the resulting list precise.
+
+</Passage>
+
+<Passage id="p-token-definition">
+
+<Definition>
+
+A **vocabulary** $\mathcal V$ is a finite set of token types. A **token sequence** is an ordered tuple
+
+$$
+s=(t_1,\ldots,t_n),\qquad t_i\in\mathcal V.
+$$
+
+The symbol $t_i$ denotes the token at position $i$. The same token type may occur at several positions. We write $\mathcal V^*$ for the set of all finite token sequences over $\mathcal V$.
+
+</Definition>
+
+</Passage>
+
+<Passage id="p-token-example">
+
+For our examples, let
+
+$$
+\mathcal V=\{\text{the},\text{dog},\text{chased},\text{cat}\}.
+$$
+
+Using whole words, lowercasing the text, and omitting the final punctuation, the first sentence becomes
+
+$$
+s=(\text{the},\text{dog},\text{chased},\text{the},\text{cat}).
+$$
+
+The two occurrences of *the* have the same type but different positions. This distinction is already available in the tuple. Our simplified division is sufficient for these examples; practical [tokenization methods](https://huggingface.co/docs/transformers/tokenizer_summary) may instead use smaller units.
+
+Lowercasing and removing punctuation also discard information. We have chosen these simplifications because the present comparison does not require those distinctions.
+
+</Passage>
+
+### 2.2 Assigning vectors to tokens
+
+<Passage id="p-embedding-motivation">
+
+Consider a first attempt to turn the tokens into numbers. We could number the vocabulary, assigning *the*, *dog*, *chased*, and *cat* the identifiers $1,2,3,4$. Our sentence would become $(1,2,3,1,4)$, a sequence on which we can perform arithmetic.
+
+The difficulty appears when we ask what this arithmetic means. Subtracting the identifier of *dog* from that of *cat* gives $2$, but this difference tells us nothing about the relationship between the animals. We could renumber the vocabulary and obtain a different difference without changing either word. The identifiers are useful labels; their numerical distances are consequences of our numbering.
+
+We can therefore retain the identifiers as labels and choose the numerical values they refer to separately. We could learn a scalar for each token; more generally, we can assign a vector, allowing several coordinates to be adjusted during training. The identifier then tells us which vector to retrieve. However, choosing vectors does not by itself make their distances meaningful; that will depend on how the values are learned. We begin by defining the assignment, leaving its values unspecified.
+
+</Passage>
+
+<Passage id="p-embedding-definition">
+
+<Definition>
+
+An **embedding assignment** of dimension $d$ is a function
+
+$$
+e:\mathcal V\longrightarrow\mathbb R^d.
+$$
+
+For a sequence $s=(t_1,\ldots,t_n)$, its ordered embedding matrix is
+
+$$
+X_e(s)=
+\begin{bmatrix}
+e(t_1)^{\mathsf T}\\
+\vdots\\
+e(t_n)^{\mathsf T}
+\end{bmatrix}
+\in\mathbb R^{n\times d}.
+$$
+
+Each row corresponds to one occurrence, in sequence order.
+
+</Definition>
+
+</Passage>
+
+<Passage id="p-embedding-interpretation">
+
+The assignment can be stored as a table with one vector for each token type. In a learned model, the entries of this table are parameters adjusted during training. The definition alone does not specify what a coordinate means or require different tokens to have different vectors. If distinct token types receive distinct vectors, however, each row identifies its token, and the matrix retains the sequence.
+
+At this stage, both occurrences of *the* receive the same vector. So does *dog* in the two chasing sentences. The rows occupy different positions, but the assigned vectors have not yet incorporated their surroundings.
+
+</Passage>
+
+<Passage id="p-embedding-worked-example">
+
+Consider an assignment with two coordinates per token. Let $e(\text{the})=(1,0)$, $e(\text{dog})=(0,1)$, $e(\text{chased})=(1,1)$, and $e(\text{cat})=(-1,0)$. These values are chosen to make the calculation visible; we do not assign a linguistic meaning to either coordinate. Applying this table to our sentence produces five rows, including two copies of $(1,0)$ for the two occurrences of *the*.
+
+</Passage>
+
+<EmbeddingExplorer />
+
+<Passage id="p-embedding-example-consequence">
+
+Exchanging *dog* and *cat* changes the order of the rows, while the lookup table stays the same. Each token still receives its assigned vector. The distinction between the sentences is therefore present in the matrix, even though the individual vectors say nothing yet about which animal performs the action. What remains of that distinction when we combine the rows?
+
+</Passage>
+
+### 2.3 What a representation preserves
+
+<Passage id="p-representation-question">
+
+Consider a model whose input is a single vector for each sentence. Our embedding matrix has one row per token, so we must decide how to combine those rows. Before choosing a construction, let us state what its result must allow us to determine: for our two chasing sentences, which animal performs the action? This gives us a specific question against which to examine a representation.
+
+</Passage>
+
+<Passage id="p-representation-definition">
+
+<Definition>
+
+Let $\mathcal S\subseteq\mathcal V^*$ be the set of sequences under consideration. A **representation** is a function $R:\mathcal S\to\mathcal Z$, where $\mathcal Z$ is a set of possible representations. Let $q:\mathcal S\to\mathcal Y$ describe a quantity or label we wish to determine. We say that $R$ **preserves the information needed for $q$** if there exists a function $f:\mathcal Z\to\mathcal Y$ such that
+
+$$
+q=f\circ R.
+$$
+
+Thus $q(s)$ can be determined from $R(s)$ alone.
+
+</Definition>
+
+</Passage>
+
+<Passage id="p-representation-lemma-motivation">
+
+For our two chasing sentences, take $q(s)=\text{dog}$ and $q(s')=\text{cat}$, where $s'$ is the sequence with the animals exchanged. A representation preserves the answer if some function of its output can recover these labels. We do not yet ask whether a neural network can learn that function. First we need to know whether it can exist at all.
+
+</Passage>
+
+<Passage id="p-representation-lemma">
+
+<Lemma>
+
+If $s,s'\in\mathcal S$ satisfy $R(s)=R(s')$ but $q(s)\ne q(s')$, then $R$ does not preserve the information needed for $q$.
+
+</Lemma>
+
+<Proof>
+
+Suppose that $q=f\circ R$. Since $R(s)=R(s')$, applying $f$ to both sides gives
+
+$$
+q(s)=f(R(s))=f(R(s'))=q(s'),
+$$
+
+contrary to the assumption.
+
+</Proof>
+
+</Passage>
+
+<Passage id="p-representation-lemma-consequence">
+
+For a fixed representation $R$, this is a restriction on every function that receives only $R(s)$. A larger neural network may compute a more complicated function of its input, but equal inputs still give equal outputs. If the representation itself is learned, we must also ask whether changing its parameters can separate the sequences. Conversely, retaining a distinction only makes it available; it does not establish that a trained model will use it correctly.
+
+</Passage>
+
+### 2.4 A construction that forgets order
+
+<Passage id="p-sum-motivation">
+
+Consider adding the rows of the embedding matrix from [2.2](#token-vectors). The five two-dimensional rows become one two-dimensional vector. More generally, for $s=(t_1,\ldots,t_n)$, define
+
+$$
+R_\Sigma(s)=\sum_{i=1}^n e(t_i).
+$$
+
+This construction accepts sequences of different lengths and always produces a vector in $\mathbb R^d$. It is therefore convenient for the model we have proposed. The coordinates of the token vectors may be chosen or learned; let us examine whether either choice can retain the distinction between our sentences.
+
+</Passage>
+
+<Passage id="p-sum-proposition">
+
+<Proposition>
+
+For any embedding assignment $e$ and any permutation $\pi$ of the positions $\{1,\ldots,n\}$,
+
+$$
+R_\Sigma(t_{\pi(1)},\ldots,t_{\pi(n)})
+=R_\Sigma(t_1,\ldots,t_n).
+$$
+
+The sum representation is unchanged by a rearrangement of the tokens.
+
+</Proposition>
+
+<Proof>
+
+A permutation visits each position exactly once. Reindexing the finite sum therefore gives
+
+$$
+\sum_{i=1}^n e(t_{\pi(i)})=\sum_{j=1}^n e(t_j).
+$$
+
+</Proof>
+
+</Passage>
+
+<Passage id="p-sum-example">
+
+The sum has behaved impeccably. Unfortunately, it has forgotten who chased whom.
+
+Our three arrangements all contain two occurrences of *the* and one of each remaining token. Consequently, all three receive the vector
+
+$$
+2e(\text{the})+e(\text{dog})+e(\text{chased})+e(\text{cat}).
+$$
+
+For the assignment in [2.2](#token-vectors), this sum is $(2,2)$. Changing the values in the lookup table may change that sum, but the three arrangements will still receive the same result. The proposition holds for every embedding assignment, including one adjusted during training. By the lemma, no function of this sum alone can distinguish who chases whom in the first two sentences. In particular, a feed-forward network applied after the sum cannot repair the loss of order.
+
+</Passage>
+
+<RepresentationExplorer />
+
+<Passage id="p-representations-conclusion">
+
+Learning the lookup table cannot resolve this first obstruction: an unweighted sum is unchanged by rearranging the tokens. The ordered matrix in [2.2](#token-vectors) retains the distinction when the token vectors are distinct, but its construction assigns each token the same vector wherever it occurs. This leaves our next question: how can the representation at one position come to reflect the other words in the sequence?
+
+</Passage>
+
+<Passage id="p-context-heading">
+
+## 3 From context to weighted combinations
+
+</Passage>
+
+<Passage id="p-context-motivation">
+
+Consider *dog* in our two chasing sentences. The lookup table assigns it the same vector in both, although its role in the described event changes. The ordered matrix retains the words and their arrangement. We now want a computation that uses this information to produce a representation for each occurrence, allowing the surrounding words to contribute.
+
+This changes the object we are constructing. In [2.4](#forgetting-order), we sought one vector for the whole sentence. Here we keep one output vector per position. The question is how information from several positions can enter each of these outputs.
+
+Before choosing an operation, consider how we read “The dog chased the cat.” To identify the chaser, we need *dog* and its relation to *chased*. To identify the participant being chased, *cat* becomes central to the answer. The words have not changed, but the question changes which relationships we examine.
+
+Now consider “The dog did not chase the cat.” The added *not* changes what the sentence asserts. A rule that always emphasizes animal names and actions while giving little consideration to other words would miss this distinction. In a passive sentence, *was* and *by* help identify the construction and its participants. Relevance depends on the sentence and on what we are trying to interpret.
+
+</Passage>
+
+<WordRelevanceStudy />
+
+<Passage id="p-context-reading-bridge">
+
+The colors above represent contributions chosen for an illustrative reading. They are not measurements from a trained model. We can change the question and watch a different set of words receive emphasis; equal contributions remove this selectivity.
+
+This gives us something to express mathematically: information from different words should be allowed to contribute by different amounts. In self-attention, the weights belong to a particular receiving position, rather than being one permanent ranking of words for the whole sentence. Different learned comparisons can produce different rows of contributions. First we will examine what a weighted combination does; how to choose its coefficients is a separate question.
+
+</Passage>
+
+### 3.1 A representation that depends on its surroundings
+
+<Passage id="p-context-independent">
+
+Consider applying the same feed-forward network $\phi$ to every token vector:
+
+$$
+h_i=\phi(e(t_i)).
+$$
+
+The network may learn a complicated transformation, but its input at position $i$ is still only $e(t_i)$. Changing another word leaves this input unchanged. In particular, *dog* receives the same output in both chasing sentences, regardless of the network's parameters. Applying further transformations independently at each position does not introduce the missing dependence.
+
+This limitation concerns the inputs we have supplied. A feed-forward network receiving the entire flattened matrix can combine information across positions. Such a construction gives us one possible model for a fixed sentence length. Our aim is to build a shared computation that can be applied at every position and to sequences of different lengths.
+
+</Passage>
+
+<Passage id="p-context-dependence">
+
+For this purpose, an output $h_i$ must be allowed to depend on the sequence:
+
+$$
+h_i=F_i(x_1,\ldots,x_n),\qquad x_j=e(t_j).
+$$
+
+Dependence on several inputs makes context available. It does not yet specify how to use it. A first construction is to combine their vectors, choosing a separate combination for each output position.
+
+</Passage>
+
+### 3.2 Combining information from other words
+
+<Passage id="p-context-weight-motivation">
+
+Consider a weighted combination for the occurrence of *dog*. We could give its own vector half the weight, the vector of *chased* one quarter, and the vector of *cat* one quarter. Using the assignment from [2.2](#token-vectors), this gives
+
+$$
+c_2=\tfrac12(0,1)+\tfrac14(1,1)+\tfrac14(-1,0)
+=(0,\tfrac34).
+$$
+
+</Passage>
+
+<WeightedSumWalkthrough />
+
+<Passage id="p-context-weight-interpretation">
+
+Changing a contributing vector can now change the result. The coefficients describe how much of each vector enters this particular combination. They have been chosen by hand; the resulting coordinates do not identify a grammatical role. The example gives us a computation whose inputs extend beyond one word.
+
+</Passage>
+
+<Passage id="p-context-weight-definition">
+
+<Definition>
+
+For input vectors $x_1,\ldots,x_n\in\mathbb R^d$, a **weighted context vector** at position $i$ is
+
+$$
+c_i=\sum_{j=1}^n a_{ij}x_j,
+\qquad a_{ij}\geq0,\qquad \sum_{j=1}^n a_{ij}=1.
+$$
+
+The first index identifies the position receiving information; the second identifies a contributing position. Different receiving positions may use different rows of weights.
+
+</Definition>
+
+</Passage>
+
+<Passage id="p-context-weight-properties">
+
+The restrictions on the coefficients make $c_i$ a weighted average. Its scale does not grow merely because we include more words. They also impose a limitation that follows directly from the definition.
+
+In our example, the second coordinates of the five inputs are all either $0$ or $1$. Giving them nonnegative shares that total one cannot produce a second coordinate below $0$ or above $1$. Our result, $3/4$, lies between those endpoints. The same reasoning applies to any coordinate; we can state it without choosing particular vectors.
+
+<Proposition>
+
+For each coordinate $r$, the context vector satisfies
+
+$$
+\min_j(x_j)_r\ \leq\ (c_i)_r\ \leq\ \max_j(x_j)_r.
+$$
+
+</Proposition>
+
+<Proof>
+
+Write $m=\min_j(x_j)_r$ and $M=\max_j(x_j)_r$. Multiplying $m\leq(x_j)_r\leq M$ by $a_{ij}\geq0$ and summing over $j$ gives
+
+$$
+m\sum_j a_{ij}\leq\sum_j a_{ij}(x_j)_r\leq M\sum_j a_{ij}.
+$$
+
+Both sums of weights equal one.
+
+</Proof>
+
+The construction combines available coordinates; additional transformations can then act on the result. If every row uses $a_{ij}=1/n$, however, every position receives the same mean. For rearrangements of the same words, this repeats the loss found in [2.4](#forgetting-order). Choosing the coefficients is therefore part of the problem.
+
+</Passage>
+
+<ContextMixer />
+
+### 3.3 The contributions must adapt
+
+<Passage id="p-context-adaptive-weights">
+
+We have so far supplied the coefficients ourselves. This let us examine the weighted average without having to solve the selection problem at the same time. The sentence experiment shows why the same coefficients should not be reused indiscriminately.
+
+Consider the change from “The dog chased the cat” to “The cat chased the dog.” If we follow the word *dog*, its relationship to *chased* changes. A useful choice of context may therefore depend both on the receiving occurrence and on the candidate words around it. Giving *dog* one fixed importance score would not specify which words should contribute to its representation in either sentence.
+
+There are three objects to keep distinct. An input vector contains the coordinates available for a word. A comparison score is a number obtained from a receiving input and a candidate input. A weight specifies that candidate's share in the receiving position's combination. A score need not already be a valid weight.
+
+Our next task is to construct comparisons that can be adjusted during learning. We will keep the weighted average from [3.2](#weighted-context) in view, but set aside its normalization temporarily. One pair of input vectors, one scalar comparison, and one change of parameters will be enough to begin.
+
+</Passage>
+
+<Passage id="p-comparisons-heading">
+
+## 4 Learning a comparison
+
+</Passage>
+
+<Passage id="p-comparisons-introduction">
+
+Consider *dog* as the receiving word and *chased* as a candidate contributor. The weighted average tells us what to do once a coefficient is available; it does not tell us how to choose that coefficient. We now seek a shared numerical rule that compares the two representations.
+
+We will begin with one number on each side, before extending the comparison to several coordinates. The calculations below establish what the rule can express and what it loses. Their hand-chosen coordinates do not yet assign linguistic meanings to the scores.
+
+</Passage>
+
+### 4.1 Two roles in a comparison
+
+<Passage id="p-context-score-motivation">
+
+Consider how the hand-chosen coefficients would need to change in another sentence. A fixed rule such as “use the second word” refers to a slot, whose occupant may have a different role after a rearrangement. We would like the contribution from position $j$ to position $i$ to depend on the representations involved.
+
+What should a useful comparison measure? When forming a representation for *dog*, information about the action described by *chased* may be useful. The receiving word identifies the occurrence whose representation we are constructing; the contributing word supplies possible context. These are different roles in the computation. We need a way to choose which features of each word enter the comparison.
+
+A first attempt is the dot product
+
+$$
+x_i^{\mathsf T}x_j=\sum_{r=1}^{d}(x_i)_r(x_j)_r.
+$$
+
+This compares corresponding coordinates and adds their products. For our example vectors, the score between *dog* and *chased* is $1$ in either direction. The calculation is simple, but the coordinates were chosen by hand in [2.2](#token-vectors); we have no reason to expect their unmodified dot product to measure the relationship we need.
+
+Consider a smaller choice: compare the second coordinate of the receiving vector with the first coordinate of the contributing vector. Multiplying these two numbers gives
+
+$$
+g(x_i,x_j)=(x_i)_2(x_j)_1.
+$$
+
+For *dog* receiving from *chased*, this gives $1\cdot1=1$. Reversing their roles gives $1\cdot0=0$. This is a numerical illustration, with no linguistic meaning assigned to the coordinates. It shows that choosing different features on the two sides allows a directed comparison. A symmetric raw dot product cannot express this particular choice.
+
+We have introduced a distinction between the two sides of a comparison. For the moment, its only purpose is to permit different numerical choices for receiving and contributing inputs. Before converting scores into shares, we should give those choices parameters that can change.
+
+</Passage>
+
+### 4.2 Scalar queries and keys
+
+<Passage id="p-context-scalar-comparisons">
+
+The directed comparison just used one coordinate from each input. We can keep that calculation while expressing the selections as two adjustable linear combinations. Each input remains a vector; only the two selected combinations will be scalars.
+
+Our coordinate selection can be written as a linear transformation. In two dimensions, let
+
+$$
+w_Q=(0,1),\qquad w_K=(1,0).
+$$
+
+Then $w_Q^{\mathsf T}x_i$ selects the second coordinate of the receiving vector, and $w_K^{\mathsf T}x_j$ selects the first coordinate of the contributing vector. We have expressed the hand-chosen comparison using two parameter vectors. Changing their entries changes which combinations of the input coordinates we compare.
+
+For instance, keeping $w_Q=(0,1)$ but changing $w_K$ to $(1,1)$ makes the contributing side use the sum of its coordinates. The number obtained from *chased* changes from $1$ to $2$, while the number obtained from the receiving *dog* remains $1$. The resulting product changes from $1$ to $2$. This gives us a small family of comparisons whose parameters could be adjusted during training.
+
+We can now give the two intermediate numbers names:
+
+$$
+q_i=w_Q^{\mathsf T}x_i,\qquad
+k_j=w_K^{\mathsf T}x_j,\qquad
+r_{ij}=q_i k_j.
+$$
+
+The **query** $q_i$ is the number formed from the receiving position. The **key** $k_j$ is the number formed from a candidate contributing position. These names identify their roles in the comparison. At present they are scalars, and their product is a **score**.
+
+Neither number is an importance assigned to a word on its own. The query describes the receiving side of this chosen comparison; the key describes its candidate side. Only their product compares the pair. A candidate can therefore receive different scores when it meets different queries, just as the opening example emphasized different words for different readings.
+
+Keep the query at *dog* and return to $w_Q=(0,1)$, $w_K=(1,0)$. The query is $1$. Applying the key transformation to each word of “the dog chased the cat” gives
+
+$$
+(k_1,k_2,k_3,k_4,k_5)=(1,0,1,1,-1).
+$$
+
+Multiplying each key by the same query produces the score row $(1,0,1,1,-1)$. We have replaced five individually chosen contributions with a shared rule for comparing the receiving word to every candidate. The scores are still numbers to be converted into weights; a negative score cannot yet serve as one of the coefficients in [3.2](#weighted-context).
+
+</Passage>
+
+<ProjectionComparison />
+
+### 4.3 What one coordinate forgets
+
+<Passage id="p-context-scalar-loss">
+
+Consider the receiving map used in [4.2](#scalar-queries-keys):
+
+$$
+q(x)=x_2.
+$$
+
+Our inputs already have two coordinates. The map retains one number from each input. Both *dog*, with vector $(0,1)$, and *chased*, with vector $(1,1)$, give the query $1$. Their first coordinates differ, but a comparison made using these queries has no access to that difference. Whatever key it meets, the query for either word will be the same.
+
+This is a choice about which information to retain. If the second coordinate suffices for a particular task, the discarded distinction may be harmless. If the first coordinate also matters to a receiving word's comparisons, changing a later key cannot recover it from this query. We should examine the loss before deciding how to enlarge the construction.
+
+<Lemma>
+
+Every linear map from $\mathbb R^2$ to $\mathbb R$ assigns the same output to some distinct inputs.
+
+</Lemma>
+
+<Proof>
+
+Write the map as $f(x)=a x_1+b x_2$. If $a=b=0$, every input has output zero. Otherwise $u=(b,-a)$ is nonzero, and
+
+$$
+f(x+u)=a(x_1+b)+b(x_2-a)=a x_1+b x_2=f(x).
+$$
+
+Thus the distinct inputs $x$ and $x+u$ have the same output.
+
+</Proof>
+
+For a nonzero map, the multiples of $u$ describe a direction that the map cannot distinguish. A single linear measurement of a plane always has such a direction. The lemma concerns all points of the plane: a scalar map can still assign distinct numbers to a particular finite set of token vectors.
+
+</Passage>
+
+<ScalarProjection />
+
+<Passage id="p-context-two-measurements">
+
+In the Data flow view, the first coordinate is multiplied by zero and the second by one. Adding those products gives $q=x_2$. Switch to Transform to see *dog* and *chased* meet at $1$. Retaining a second measurement, such as $x_1$, would distinguish these two inputs again. More generally, two independent linear measurements can preserve both coordinates of a plane. Repeating the same measurement twice cannot: the second copy provides no additional distinction.
+
+Two dimensions are a small example we can draw. The principle is to choose how many independent combinations the comparison should retain. Neither the number two nor the wish to preserve every input distinction is imposed by language.
+
+</Passage>
+
+### 4.4 A matrix as a map of the plane
+
+<Passage id="p-context-plane-map">
+
+Consider retaining the two combinations
+
+$$
+y_1=x_1,\qquad y_2=\tfrac12 x_1+x_2.
+$$
+
+They give one output vector $y=(y_1,y_2)$. A matrix records the coefficients of both combinations:
+
+$$
+y=Mx,\qquad
+M=\begin{pmatrix}1&0\\[2pt]\tfrac12&1\end{pmatrix}.
+$$
+
+Each row specifies one output coordinate. Each column has another useful interpretation. Let $e_1=(1,0)$ and $e_2=(0,1)$. These are the coordinate basis vectors, distinct from the token lookup notation $e(t)$. Since $x=x_1e_1+x_2e_2$, linearity gives
+
+$$
+Mx=x_1Me_1+x_2Me_2,
+\qquad
+Me_1=(1,\tfrac12),\quad Me_2=(0,1).
+$$
+
+The columns of $M$ are therefore the images of the two basis vectors. Knowing where the map sends those two vectors tells us where it sends every point of the plane. The Transform view shows this geometry: move the basis vectors, and the grid and token vectors follow the same rule. The Data flow view follows the same multiplication numerically, showing how each input coordinate contributes to each output coordinate.
+
+For *dog*, $M(0,1)=(0,1)$; for *chased*, $M(1,1)=(1,\tfrac32)$. The distinction lost by the scalar query is now available. This particular map can be reversed: from $y$, we recover $x_1=y_1$ and $x_2=y_2-\tfrac12y_1$. A different $2\times2$ matrix may still collapse a direction if its two measurements are dependent.
+
+Here “two-dimensional” describes the input and output vector spaces. The $2\times2$ coefficient matrix defines a map between those spaces. Later, the $n\times2$ matrices $Q$ and $K$ will collect many two-coordinate vectors as rows. They are different objects with different jobs.
+
+</Passage>
+
+<MatrixMapIllustration />
+
+<PlaneTransformation />
+
+### 4.5 Comparing transformed vectors
+
+<Passage id="p-context-comparison-vectors">
+
+Consider how to compare two vectors after applying the plane maps. As in [4.1](#choosing-contributions), the receiving and candidate sides may use different maps. Keep the receiving map $M$ from [4.4](#matrix-plane) and choose a second map for the candidate:
+
+$$
+W_Q=\begin{pmatrix}1&0\\[2pt]\tfrac12&1\end{pmatrix},
+\qquad
+W_K=\begin{pmatrix}1&\tfrac12\\[2pt]0&1\end{pmatrix}.
+$$
+
+The query map moves the first basis vector as before; the key map moves the second basis vector instead. For *dog* receiving information from *chased*, our original inputs give
+
+$$
+q_{\mathrm{dog}}=W_Q(0,1)=(0,1),
+\qquad
+k_{\mathrm{chased}}=W_K(1,1)=(\tfrac32,1).
+$$
+
+We now have two coordinate products, rather than one scalar product. Add them to obtain the dot-product score:
+
+$$
+r_{\mathrm{dog},\mathrm{chased}}
+=0\cdot\tfrac32+1\cdot1=1.
+$$
+
+Reversing the receiving and contributing words gives $q_{\mathrm{chased}}=(1,\tfrac32)$ and $k_{\mathrm{dog}}=(\tfrac12,1)$. The score is then $1\cdot\tfrac12+\tfrac32\cdot1=2$. The two directions remain distinguishable. These are new, hand-chosen parameters; their scores need not equal those of the scalar construction.
+
+The queries and keys are now vectors, but their roles are unchanged. One receiving query is compared to each candidate key, giving one score per candidate. Each additional coordinate allows another feature comparison to enter that score. In terms of our sentence, this gives us a way to compare *dog* with *chased* differently from how we compare *dog* with *cat*. These comparisons will determine how the other words contribute to its contextual representation.
+
+<AuthorNote title="Keep this distinction in view">
+
+The query and key vectors alone have not yet combined that information. Each is still a transformation of one input vector. Context enters the output when the comparisons determine contributions from several positions. We will return to this distinction when a transformer uses the output of one layer as the input to another: its later queries and keys can then begin with information already gathered from other words.
+
+</AuthorNote>
+
+Two coordinates let us retain two combinations of the input features. A richer representation may offer several features relevant to a comparison, and there is no reason to require all of them to pass through just two numbers. We can choose a comparison dimension $d_k$ independently of the input dimension $d$. Each row of a projection matrix supplies one combination:
+
+$$
+q_i=W_Qx_i,\qquad k_j=W_Kx_j,
+\qquad q_i,k_j\in\mathbb R^{d_k},
+$$
+
+$$
+r_{ij}=q_i^{\mathsf T}k_j
+=\sum_{\ell=1}^{d_k}(q_i)_\ell(k_j)_\ell.
+$$
+
+Here $W_Q,W_K\in\mathbb R^{d_k\times d}$. The input has $d$ coordinates, while the comparison uses $d_k$ coordinates; these dimensions need not be equal. The scalar example is the case $d_k=1$, with $w_Q^{\mathsf T}$ and $w_K^{\mathsf T}$ as the single rows of the matrices. These parameters choose a numerical comparison; they do not assign a noun, verb, subject, or agent label by definition.
+
+<AuthorNote title="A geometric interpretation">
+
+For a nonzero query, the same score can be written as
+
+$$
+q^{\mathsf T}k=\lVert q\rVert
+\left(\frac{q}{\lVert q\rVert}\right)^{\mathsf T}k.
+$$
+
+The second factor is the signed component of the key in the query direction. It can be negative when the vectors point in opposing directions. The orientation and length produced by each map therefore affect the comparison. The grid itself is a visual aid: the computation uses the transformed vectors.
+
+</AuthorNote>
+
+</Passage>
+
+<Passage id="p-attention-heading">
+
+## 5 From comparisons to attention
+
+</Passage>
+
+<Passage id="p-attention-introduction">
+
+Consider again *the dog chased the cat*. We now have a rule for comparing *dog* with each word in the sentence. A scalar product gave us one such rule; query and key vectors extended it to several coordinates. But a comparison score is not yet an amount of information to take from *chased* or from *cat*. How should the scores together determine how much each word contributes to the representation of *dog*? We return to the weighted average from [Section 3](#context-to-attention) to make this connection precise.
+
+</Passage>
+
+### 5.1 From scores to weights
+
+<AttentionAtlas />
+
+<Passage id="p-context-softmax">
+
+We can now compare a receiving word with each candidate using one or several coordinates. We have not yet specified what follows from those comparisons. A score of $1$ says that one comparison is larger than a score of $0$; it does not by itself specify how much of either word's vector should enter the output. Return to the scalar example from [4.2](#scalar-queries-keys) to examine this next choice without changing its numbers.
+
+Recall the construction in [3.2](#weighted-context). Its coefficients describe shares in a weighted average. We chose a total of one so that the output retains the scale of the vectors being combined: repeating the same vector several times then returns that vector, rather than a larger multiple of it. This is a choice of construction, not a requirement imposed by language. With that choice, giving more weight to one candidate leaves less available to the others. We therefore need to consider the scores together, as a row, before assigning the contributions. This dependence on the other candidates is part of the operation we are about to construct.
+
+Consider the score row we obtained for *dog*: $(1,0,1,1,-1)$. The construction in [3.2](#weighted-context) requires nonnegative weights whose sum is one. Dividing these scores by their sum, which is $2$, would give $(\tfrac12,0,\tfrac12,\tfrac12,-\tfrac12)$. The negative entry remains, so this simple normalization does not give the weighted average we intended.
+
+One could discard negative scores and keep the positive ones. But a row whose scores are all negative would then have no contribution to normalize. Squaring avoids negative quantities, yet makes $1$ and $-1$ equal, losing their ordering. These failures suggest two requirements: the intermediate quantity should be positive for every real score, and should increase as the score increases.
+
+There are many functions with those properties. A further consideration concerns how two candidates compare. Suppose their relative contribution is to depend on the difference between their scores. Raising every score by the same amount should then leave the result unchanged. Exponentiation has this property: $\exp(s+b)=\exp(b)\exp(s)$, so a common change of score multiplies every intermediate quantity by the same factor. Normalization will cancel that factor.
+
+We will use exponentiation for this construction. It is smooth, positive, and increasing, and the identity above gives us a property we can check. The requirements of a weighted average alone do not force this particular choice. Applying it to our example turns the row into
+
+$$
+(\exp(1),\exp(0),\exp(1),\exp(1),\exp(-1)).
+$$
+
+Let $D=3\exp(1)+1+\exp(-1)$ be the sum of these entries. Dividing each entry by $D$ gives positive coefficients that add to one:
+
+$$
+(a_{21},\ldots,a_{25})
+=\frac1D(\exp(1),1,\exp(1),\exp(1),\exp(-1)).
+$$
+
+Approximately, this is $(0.285,0.105,0.285,0.285,0.039)$. We now have coefficients that can be used in the construction from [3.2](#weighted-context). Using the original input vectors as the vectors being combined gives
+
+$$
+c_2=\sum_{j=1}^5 a_{2j}x_j
+=\left(\frac{3\exp(1)-\exp(-1)}D,
+\frac{1+\exp(1)}D\right)
+\approx(0.818,0.390).
+$$
+
+This completes one calculation from token vectors to a context vector: form a query and keys, compare them, normalize the scores, and combine the inputs. Our chosen parameters have not been trained to identify grammatical roles. They let us examine the operations without needing a trained model.
+
+</Passage>
+
+<ScoreToWeights />
+
+<Passage id="p-context-softmax-general">
+
+In the walkthrough, keep the scores fixed first and follow the change in what the numbers mean. The scores may have either sign. Their exponentials are positive amounts with no fixed total. Only after division by the total do they become shares of the weighted average. Changing one score then shows why the other weights also change: they use the same denominator.
+
+The same normalization applies to any row of real scores. Writing $s_{ij}$ for the score at receiving position $i$ and contributing position $j$, define
+
+$$
+a_{ij}=\frac{\exp(s_{ij})}{\sum_{\ell=1}^n\exp(s_{i\ell})}.
+$$
+
+This operation is called **softmax**. For a fixed receiving position $i$, the denominator sums over all candidates $\ell$. Each resulting coefficient is positive, and dividing by this common denominator makes the coefficients sum to one.
+
+To examine how two candidates compare, divide their weights:
+
+$$
+\frac{a_{ij}}{a_{im}}=\exp(s_{ij}-s_{im}).
+$$
+
+Their relative weight depends on the difference between their scores. In our example, candidates with scores $1$ and $0$ have weights in the ratio $\exp(1)$; those with scores $1$ and $-1$ have ratio $\exp(2)$. Equal scores receive equal weights. Softmax preserves these comparisons while placing the whole row on a common scale.
+
+Adding a constant $b$ to every score multiplies every exponential by $\exp(b)$. This common factor cancels between numerator and denominator, so the weights remain unchanged. Subtracting the largest score is a useful instance: all exponentials then have inputs at most zero, reducing the risk of overflow in a numerical implementation.
+
+</Passage>
+
+### 5.2 What values transmit
+
+<Passage id="p-context-values">
+
+In the completed scalar example, we used queries and keys to choose weights, then combined the original input vectors $x_j$. That is already a valid choice. Consider whether it is the only choice we want to make.
+
+The query and key transformations choose coordinates for comparison. The vector being combined carries information into the output. These choices need not coincide. For example, a comparison might use a feature that helps identify a candidate, while the output needs other features of that candidate. Requiring the comparison vector itself to be transmitted would tie together two decisions for which we have given different reasons.
+
+We can examine this separation without assigning linguistic meanings to our coordinates. Keep every score and weight from the scalar example, but replace each transmitted vector $(x_1,x_2)$ by $(x_2,x_1)$. Since the same weights multiply the swapped coordinates, the result changes from approximately $(0.818,0.390)$ to $(0.390,0.818)$. The choice of contributors is the same; the coordinates they contribute have changed.
+
+The coordinate swap is itself a linear map. More generally, a linear map can select, scale, and combine the input features before they are transmitted, and can choose how many output coordinates to provide. Allowing its coefficients to be learned gives us a simple extension of the swap: we can adjust what a word contributes independently of how strongly it is selected. This motivates another parameterized linear map:
+
+$$
+v_j=W_Vx_j,\qquad W_V\in\mathbb R^{d_v\times d}.
+$$
+
+We call $v_j$ a **value**. It is the vector to be combined after the weights have been chosen. The new output is
+
+$$
+h_i=\sum_{j=1}^n a_{ij}v_j.
+$$
+
+Setting $W_V$ to the identity gives $v_j=x_j$ and returns us to the example just worked through. Other choices change what is transmitted while leaving the query–key comparisons intact. The receiving query, candidate key, and transmitted value are three roles in the computation; they are formed from the same input vectors using separate parameters.
+
+Since $W_V$ is linear, it can also be moved outside this one weighted sum:
+
+$$
+h_i=\sum_j a_{ij}W_Vx_j
+=W_V\left(\sum_j a_{ij}x_j\right).
+$$
+
+The value map therefore does not supply an additional source of context. It chooses the features and dimension of the output, while the dependence on other positions comes from the weights and the inputs being combined. Separating the maps lets us choose comparison coordinates and output coordinates independently.
+
+</Passage>
+
+<ValueTransformation />
+
+<Passage id="p-context-three-geometric-maps">
+
+We can now compare all three maps geometrically. Each begins with the same input vector $x_j$. The query and key maps choose the vectors to be compared. The value map chooses the vector that a candidate contributes after its weight has been determined.
+
+Keep the two query and key matrices from [4.5](#comparison-vectors) and choose, for the next illustration,
+
+$$
+W_V=\begin{pmatrix}\tfrac12&1\\[2pt]1&-\tfrac12\end{pmatrix}.
+$$
+
+For *dog*, the three images are $q=(0,1)$, $k=(\tfrac12,1)$, and $v=(1,-\tfrac12)$. They describe three numerical roles of the same input. None is a transformation of the preceding image: the value map is applied to $x$, just as the query and key maps are.
+
+Follow one map at a time below. In Data flow, watch the two input numbers reach the matrix weights, form products, and become an output coordinate. The original input remains available for the next row and for the other maps. Switch to Transform to see the corresponding action on the basis vectors and the plane.
+
+The displayed $2\times2$ matrix contains the coefficients of that map. Gathering its five resulting word vectors as rows gives the corresponding $5\times2$ matrix $Q$, $K$, or $V$.
+
+</Passage>
+
+<QKVGeometry />
+
+### 5.3 Making position available
+
+<Passage id="p-context-position">
+
+We have a complete way to choose and combine contributions. Now return to the original reason for considering context: *dog* plays different roles in our two chasing sentences. Does the computation we have built distinguish these occurrences?
+
+With $x_i=e(t_i)$, the query for *dog* is the same in both sentences. Its candidates are also the same token vectors, rearranged. In the scalar example, its score row changes from $(1,0,1,1,-1)$ to $(1,-1,1,1,0)$. The score for *cat* moves with *cat*, and the score for *dog* moves with *dog*. The softmax denominator is unchanged, so each token receives the same weight as before. Rearranging the weighted summands leaves the output unchanged.
+
+This is a stronger limitation than choosing unfortunate parameters. A shared transformation receives the same vector for *dog* wherever *dog* occurs. Moving the other token vectors merely moves their scores and contributions with them. No choice of these shared projection matrices can recover the missing distinction while this is all the information supplied to the head.
+
+The computation can react to changing a word, but this use of token vectors alone does not distinguish their arrangement. Our ordered input matrix has row numbers; the shared comparisons we defined have not used those numbers. Before changing the comparison rule again, we should supply the information whose absence causes the failure.
+
+One way to make them available is to associate a vector $p_i$ with each position and form
+
+$$
+x_i=e(t_i)+p_i.
+$$
+
+For a small example, take $p_i=((i-1)/4,0)$. The vector of *dog* at position $2$ becomes $(\tfrac14,1)$, while at position $5$ it becomes $(1,1)$. Its input to the query, key, and value maps can now change when it moves. The later walkthrough will let us switch this position contribution on and off.
+
+These particular position vectors are illustrative. More generally, such vectors can be chosen or learned. Making location available gives the computation information it previously ignored; it does not assign a grammatical role to that location. The passive sentence from [Section 1](#meaning-and-structure) still requires us to distinguish subject from agent.
+
+It is useful to check this proposal against the failure in [2.4](#forgetting-order). Adding positions and then taking an unweighted sum gives
+
+$$
+\sum_i(e(t_i)+p_i)=\sum_i e(t_i)+\sum_i p_i.
+$$
+
+For a fixed length, rearranging the tokens leaves both sums unchanged. Position vectors therefore need to enter a computation that uses the token–position combinations, as our comparisons can do. Their presence alone does not make every subsequent construction preserve order.
+
+</Passage>
+
+<PositionComparison />
+
+### 5.4 Choosing the score scale
+
+<Passage id="p-context-scale">
+
+<AnimalVignette scene="resting" />
+
+Let's let the dog and cat catch their breath for a moment. There is one further choice to examine before collecting the construction into a definition. Softmax depends on score differences, so the size of our dot products affects how the information is combined.
+
+Consider just two candidates. Scores $(1,0)$ give weights approximately $(0.731,0.269)$. Multiplying both scores by $10$ gives weights approximately $(0.99995,0.00005)$. The ordering has not changed, but almost all of the contribution now comes from the first candidate. Multiplication therefore has a different effect from adding the common constant considered above.
+
+Why should the comparison dimension affect this size? A dot product adds $d_k$ coordinate products. More terms can make a typical sum larger even when the individual terms have not changed their scale.
+
+To make this observation precise, we use a simple probabilistic model. Suppose all query and key coordinates are mutually independent, with mean zero and variance one. Variance measures spread about the mean; its square root is the standard deviation. We first examine one product, then the sum of the products.
+
+#### One coordinate product
+
+For one product $q_rk_r$, independence gives
+
+$$
+\mathbb E[q_rk_r]=\mathbb E[q_r]\mathbb E[k_r]=0,
+\qquad
+\mathbb E[(q_rk_r)^2]=\mathbb E[q_r^2]\mathbb E[k_r^2]=1.
+$$
+
+Its mean is zero and its second moment is one. Since variance is the second moment minus the square of the mean, this product has variance $1$.
+
+#### Adding the coordinate products
+
+Under our assumptions, the products for different coordinates are independent too. Their variances therefore add:
+
+$$
+\operatorname{Var}(q^{\mathsf T}k)
+=\operatorname{Var}\!\left(\sum_{r=1}^{d_k}q_rk_r\right)=d_k.
+$$
+
+The standard deviation of this sum is $\sqrt{d_k}$. Dividing the dot product by this quantity gives variance one under these assumptions. We therefore use the scaled score
+
+$$
+s_{ij}=\frac{r_{ij}}{\sqrt{d_k}}
+=\frac{q_i^{\mathsf T}k_j}{\sqrt{d_k}}.
+$$
+
+In our scalar example, $d_k=1$, so this division leaves the worked calculation unchanged. For a wider comparison, it offsets the growth suggested by the variance calculation. This is a motivation for the scale used in attention; trained coordinates need not satisfy the independence assumptions, and the division does not guarantee any particular distribution of weights.
+
+</Passage>
+
+<ScoreScale />
+
+### 5.5 Collecting the attention computation
+
+<Passage id="p-context-matrix-notation">
+
+We have so far followed one receiving position (the word whose representation we are updating). Yet the aim in [3.1](#context-dependence) was to construct a representation for each occurrence in the sentence. To update *dog*, we compare its query with all five keys and combine their values. To update *chased*, we use a different query but the same collection of keys and values. Repeating this calculation gives one output $h_i$ for each position.
+
+Before collecting the calculations into matrices, consider one entry using the maps from [4.5](#comparison-vectors) and the positions from [5.3](#position-information). At position $2$, *dog* has input $x_2=(1/4,1)$ and query $q_2=(1/4,9/8)$. At position $3$, *chased* has input $x_3=(3/2,1)$ and key $k_3=(2,1)$. Their comparison gives
+
+$$
+s_{23}=\frac{(1/4)\cdot2+(9/8)\cdot1}{\sqrt2}
+=\frac{13/8}{\sqrt2}.
+$$
+
+The first index says whose representation we are updating; the second says which candidate we are comparing with it. This is one cell in the score row for *dog*. The animation below will carry the same calculation through the other four candidates.
+
+#### Collect the projected vectors as rows
+
+Matrix notation lets us store all these repeated calculations together. It is useful to check what an entry means before using the compact formula.
+
+As in [Section 2](#language-to-representations), let row $i$ of $X$ be $x_i^{\mathsf T}$. Since $(W_Qx_i)^{\mathsf T}=x_i^{\mathsf T}W_Q^{\mathsf T}$, the matrix containing all query rows is $Q=XW_Q^{\mathsf T}$. The same reasoning gives
+
+$$
+Q=XW_Q^{\mathsf T},\qquad
+K=XW_K^{\mathsf T},\qquad
+V=XW_V^{\mathsf T}.
+$$
+
+#### Collect the comparisons as a matrix
+
+The entry in row $i$, column $j$ of $QK^{\mathsf T}$ is
+
+$$
+(QK^{\mathsf T})_{ij}
+=\sum_{r=1}^{d_k}Q_{ir}K_{jr}
+=q_i^{\mathsf T}k_j.
+$$
+
+Thus this product collects every receiving–candidate comparison into an $n\times n$ matrix. Dividing by $\sqrt{d_k}$ gives the score matrix $S$. Applying softmax separately to each row gives a matrix $A$, whose entry $A_{ij}=a_{ij}$ is the contribution from position $j$ to position $i$. Rows are normalized independently; the columns need not sum to one.
+
+#### Combine the values with each row of weights
+
+Now examine the product $AV$. For output coordinate $\ell$,
+
+$$
+(AV)_{i\ell}=\sum_{j=1}^n A_{ij}V_{j\ell}
+=\sum_{j=1}^n a_{ij}(v_j)_\ell
+=(h_i)_\ell.
+$$
+
+Each row of $AV$ is therefore the weighted value sum we already defined. The product has size $n\times d_v$: one output vector for each input position. The matrix formula collects the same scalar computations; it introduces no new operation.
+
+</Passage>
+
+<Passage id="p-context-attention-definition">
+
+The notation has become impressively compact. We should check that it is still saying what we mean. Each entry of $QK^{\mathsf T}$ compares one receiving query with one candidate key; each row of $AV$ combines the values using the weights chosen for that receiving position. We can now collect these operations into one definition.
+
+<Definition>
+
+A **scaled dot-product self-attention head** forms queries, keys, and values from the same input sequence, and computes
+
+$$
+s_{ij}=\frac{q_i^{\mathsf T}k_j}{\sqrt{d_k}},
+\qquad
+a_{ij}=\frac{\exp(s_{ij})}{\sum_{\ell=1}^n\exp(s_{i\ell})},
+\qquad
+h_i=\sum_{j=1}^n a_{ij}v_j.
+$$
+
+With the row matrices just described, this is
+
+$$
+H=\operatorname{softmax}_{\mathrm{rows}}
+\!\left(\frac{QK^{\mathsf T}}{\sqrt{d_k}}\right)V.
+$$
+
+Here $X\in\mathbb R^{n\times d}$, $Q,K\in\mathbb R^{n\times d_k}$, $V\in\mathbb R^{n\times d_v}$, and $H\in\mathbb R^{n\times d_v}$.
+
+</Definition>
+
+</Passage>
+
+<Passage id="p-context-attention-example">
+
+We have reached the [attention construction](https://arxiv.org/abs/1706.03762). If you have followed a query through its comparisons, turned the scores into weights, and combined the values, give yourself a pat on the back! You have worked through an attention head. We are not done, however. We still need to decide how to retain the receiving word's input, how to process the gathered features, and how to repeat these operations. These are the questions that will lead us from attention to a transformer.
+
+<AnimalVignette scene="paw-bump" />
+
+The example below carries out the attention calculation on our chasing sentence. It uses two-dimensional queries and keys with a different set of hand-chosen projection parameters; the matrices are displayed so that each result can be checked. Its numbers consequently differ from the scalar example above.
+
+Begin with the inputs and follow one receiving position all the way to its output. Only after that calculation is familiar, choose another receiving word or switch off the position contribution. The query for *dog* is row $2$ of $Q$; this choice fills row $2$ of the score and weight matrices. Other queries are used when we update the other positions.
+
+</Passage>
+
+<SequenceAttentionExplorer />
+
+<Passage id="p-context-permutation">
+
+The position switch exposes the limitation we met before defining attention. With position information removed, following the token *dog* through a rearrangement produces the same head output. The entire output matrix need not be identical: its rows move with the input rows.
+
+<Proposition>
+
+Let $\operatorname{Att}$ be the self-attention head just defined, with shared projection matrices and no mask or other position-dependent term. For any permutation matrix $P$,
+
+$$
+\operatorname{Att}(PX)=P\operatorname{Att}(X).
+$$
+
+</Proposition>
+
+<Proof>
+
+Write $Q',K',V'$ for the matrices obtained from $PX$. The shared projections give, for example,
+
+$$
+Q'=(PX)W_Q^{\mathsf T}=P(XW_Q^{\mathsf T})=PQ.
+$$
+
+Likewise $K'=PK$ and $V'=PV$. Each projected row moves with its input row. Writing $S=QK^{\mathsf T}/\sqrt{d_k}$, the new score matrix is
+
+$$
+S'=\frac{(PQ)(PK)^{\mathsf T}}{\sqrt{d_k}}
+=P\left(\frac{QK^{\mathsf T}}{\sqrt{d_k}}\right)P^{\mathsf T}
+=PSP^{\mathsf T}.
+$$
+
+The left multiplication rearranges receiving rows, and the right multiplication rearranges candidate columns. Within any row, permuting the scores leaves the sum of their exponentials unchanged. The softmax weights therefore follow the same column permutation. Rearranging entire rows simply rearranges their independently computed softmax rows. Hence, if $A=\operatorname{softmax}_{\mathrm{rows}}(S)$, then $A'=PAP^{\mathsf T}$.
+
+Finally multiply by the rearranged values. Since $P^{\mathsf T}P=I$, the matching column and row permutations cancel:
+
+$$
+\operatorname{Att}(PX)
+=(PAP^{\mathsf T})(PV)=PAV=P\operatorname{Att}(X).
+$$
+
+</Proof>
+
+This property is called **permutation equivariance**. Reordering the complete input rows reorders the outputs in the same way. But exchanging *dog* and *cat* while leaving each position vector at its original location changes only the token parts of those rows. The new input generally is not $PX$. The proposition therefore does not require the two occurrences of *dog* to have the same output once position information is supplied.
+
+</Passage>
+
+<Passage id="p-context-conclusion">
+
+Our construction now allows a word's output to depend on other positions through learned comparisons and weighted values. The weights are intermediate coefficients, not proofs of grammatical or semantic understanding. Whether a trained model learns the relationships we described in [Section 1](#meaning-and-structure) depends on its parameters, its training task, and the surrounding computation.
+
+This head supplies one operation for building contextual representations. The next step is to examine how several such operations, transformations at each position, and repeated layers are assembled into a transformer.
+
+</Passage>
+
+<Passage id="p-transformer-section">
+
+## 6 From attention to a transformer
+
+</Passage>
+
+<Passage id="p-transformer-introduction">
+
+Consider again (not again!) *the dog chased the cat*. We began with a fixed vector for each token and constructed a way for its occurrence to receive information from the other words. The result is still a sequence of vectors. We can therefore ask what should happen to those vectors next.
+
+One possibility is to perform attention again. But before repeating the construction, we should examine what one application has supplied and what we want to retain. A weighted combination gathers information. We may also want several different combinations, access to the representation we started with, and a way to process the features that have arrived together. A transformer layer arranges these operations so that its output can become the input to another layer.
+
+The diagram below is the architecture shown at the beginning of the essay. We will now construct the block on its left. The decoder remains visible to show where this block belongs in the larger model; its mask, cross-attention, and prediction task will require their own motivation. For the present, our object is a sequence of contextual representations, one per position.
+
+</Passage>
+
+<TransformerAtlas />
+
+### 6.1 What should a layer accomplish?
+
+<Passage id="p-transformer-layer-purpose">
+
+Consider the output at the position occupied by *dog*. Its input vector supplied information about that token and its position. Attention supplied a combination of information from the sentence. Replacing the input outright with this combination would make the next operation depend only on what the head transmitted. Whether that is a useful restriction depends on the choices we made inside the head.
+
+We will instead construct a layer that can gather information, incorporate it into the existing representation, and process the resulting coordinates. Keeping these tasks distinct lets us examine the reason for each operation. It also gives us a useful requirement on their dimensions.
+
+Let the incoming sequence have row matrix $X\in\mathbb R^{n\times d}$. We want the layer to produce another matrix of size $n\times d$. The number of positions is unchanged, and each representation returns to the same width. This allows another layer to receive the result without inventing a new interface.
+
+This requirement does not mean every internal vector must have $d$ coordinates. An attention head can use comparison width $d_k$ and value width $d_v$, as before. A network inside the layer can use more coordinates temporarily. The requirement concerns what enters and leaves the layer.
+
+There is a second distinction to keep in view. Gathering information concerns several positions. Processing a representation concerns the coordinates now available at one position. Once *dog* has received information from *chased* and *cat*, a computation acting only on its new vector can still act on contextual information. It need not revisit the other positions to use what has already arrived.
+
+</Passage>
+
+### 6.2 Several comparisons in parallel
+
+<Passage id="p-transformer-parallel-heads">
+
+In one attention head, a candidate's weight multiplies every coordinate of its value vector. If $v_j$ has several coordinates, then
+
+$$
+(h_i)_r=\sum_j a_{ij}(v_j)_r
+$$
+
+uses the same coefficients $a_{ij}$ for every coordinate $r$. We can compare several features when choosing those coefficients, but the resulting head still produces one pattern of contributions for the receiving position.
+
+#### Keep two combinations available
+
+Suppose we wish to keep two different patterns available. For a small calculation, hold two value vectors fixed at $v_a=(1,0)$ and $v_b=(0,1)$. Let one comparison give weights $(0.8,0.2)$ and another give $(0.1,0.9)$. Their outputs are
+
+$$
+h^{(1)}=0.8v_a+0.2v_b=(0.8,0.2),
+\qquad
+h^{(2)}=0.1v_a+0.9v_b=(0.1,0.9).
+$$
+
+Averaging these outputs gives $(0.45,0.55)$, which no longer records the two combinations separately. We could keep both by placing their coordinates next to one another:
+
+$$
+u=(h^{(1)},h^{(2)})=(0.8,0.2,0.1,0.9).
+$$
+
+This is **concatenation**. It changes the width rather than averaging the results. From $u$, we can recover either head's output simply by selecting its coordinates.
+
+For our sentence, the motivation is to allow several relationships to be compared without requiring them to share one row of weights. This does not assign one head to verbs and another to nouns. Each head has parameters that can be learned; its eventual behavior depends on the task and the other computations.
+
+#### Return to the representation width
+
+We now have four coordinates where the incoming representation had two. Passing all four onward would change the input width of the following operation. We decided in [6.1](#layer-purpose) to return to the same width, so we need a rule for choosing two output coordinates from these four.
+
+The simplest example is to keep the first coordinate of Head 1 and the second coordinate of Head 2. For $u=(0.8,0.2,0.1,0.9)$, this gives
+
+$$
+o_1=1(0.8)+0(0.2)+0(0.1)+0(0.9)=0.8,
+$$
+
+$$
+o_2=0(0.8)+0(0.2)+0(0.1)+1(0.9)=0.9.
+$$
+
+Each line is one linear combination of the concatenated coordinates. We can place its coefficients in a matrix row, just as we did in [4.4](#matrix-plane):
+
+$$
+o=W_Ou,\qquad
+W_O=\begin{pmatrix}1&0&0&0\\0&0&0&1\end{pmatrix}.
+$$
+
+The subscript $O$ stands for **output**. It names the job of this map; it is not another input to the computation. Here $W_O$ has two rows because we want two output coordinates, and four columns because all four coordinates of $u$ are available to each row.
+
+This particular map selects coordinates. We could instead mix them: rows $(1/2,0,1/2,0)$ and $(0,1/2,0,1/2)$ give $(0.45,0.55)$, the average we considered above. Allowing the coefficients to be learned makes selection and mixing choices of the same construction. The width requirement motivates the shape of the map; it does not force a particular set of coefficients.
+
+</Passage>
+
+<BlockStudy kind="heads" />
+
+<Passage id="p-transformer-parallel-notation">
+
+#### Repeat at every position
+
+We can now collect this example into notation. Suppose there are $m$ heads, each producing $d_v$ coordinates at each of the $n$ positions. Let $H^{(r)}$ be the output matrix of head $r$. Row $i$ contains that head's vector for receiving position $i$.
+
+Concatenation keeps the position fixed and places the head coordinates beside one another. Row $i$ becomes $(h_i^{(1)},\ldots,h_i^{(m)})$, with $md_v$ coordinates. The row matrix containing these concatenations is
+
+$$
+C=[H^{(1)}\ \cdots\ H^{(m)}]\in\mathbb R^{n\times md_v}.
+$$
+
+Write $u_i$ for the column vector obtained by stacking these head outputs at position $i$. An output map with $d$ rows and $md_v$ columns returns that concatenation to width $d$:
+
+$$
+o_i=W_O
+\begin{pmatrix}
+h_i^{(1)}\\ \vdots\\ h_i^{(m)}
+\end{pmatrix},
+\qquad
+\mathcal M(X)=CW_O^{\mathsf T}\in\mathbb R^{n\times d}.
+$$
+
+Here $W_O\in\mathbb R^{d\times md_v}$. The expression $\mathcal M(X)$ names the full operation: run the heads on the same input sequence, concatenate their outputs at each position, and apply the output map. We call it **multi-head self-attention**.
+
+The individual heads still use weighted averages of values. Their combined output need not be such an average. For the fixed values $(1,0)$ and $(0,1)$, a single weighted average has coordinates that sum to one; our selected output $(0.8,0.9)$ does not. It draws its coordinates from two different combinations.
+
+<AuthorNote title="Row vectors and column vectors">
+
+Our vectors $u_i$ are columns, so their map is $o_i=W_Ou_i$. When we store them as rows of $C$, transposing gives $o_i^{\mathsf T}=u_i^{\mathsf T}W_O^{\mathsf T}$. This is why the collected formula has $W_O^{\mathsf T}$ on the right. The architecture diagram calls this row-matrix weight $W^O$.
+
+</AuthorNote>
+
+</Passage>
+
+### 6.3 Keeping the original input
+
+<Passage id="p-transformer-residual">
+
+The attention output now has the width we need. We can replace $x_i$ with $o_i$, but consider the case in which the attention computation supplies no useful update. If its output is zero, replacement discards the original representation altogether.
+
+An alternative is to add the output to the input:
+
+$$
+z_i=x_i+o_i.
+$$
+
+When $o_i=0$, this returns $x_i$. More generally, the attention computation can supply a change to the representation rather than having to supply the entire representation anew. This is the purpose of the bypass drawn around the attention sublayer: the input travels along both paths and the paths meet at addition.
+
+Using our earlier vector for *dog*, $x=(0,1)$, and the illustrative update $o=(0.8,0.9)$ gives
+
+$$
+z=(0,1)+(0.8,0.9)=(0.8,1.9).
+$$
+
+The two paths have now reunited in one representation. This is the vector the following operation will receive. In the animation, try a zero update first: the bypass alone returns the original vector. Then try an update that cancels the input.
+
+</Passage>
+
+<BlockStudy kind="residual" />
+
+<Passage id="p-transformer-residual-definition">
+
+We call this construction a **residual connection**. If $F:\mathbb R^d\to\mathbb R^d$ supplies an update, its residual form is $x\mapsto x+F(x)$. The matching dimensions matter: addition pairs the first coordinate with the first, the second with the second, and so on. We cannot add a two-coordinate input directly to the four-coordinate concatenation above. The output projection made this addition possible.
+
+We should also be careful about what this construction guarantees. A bypass makes an identity contribution available; it does not prove that every input feature remains recoverable after addition. If $F(x)=-x$, then $x+F(x)=0$. The useful property here is that a zero update leaves the input unchanged, not that cancellation is impossible.
+
+</Passage>
+
+### 6.4 Processing the gathered information
+
+<Passage id="p-transformer-feed-forward">
+
+The coordinates of $z_i$ now contain information that has been brought together at one position. A further computation can examine combinations of these coordinates. For example, a feature involving both the action and a participant may depend on their joint presence rather than on either contribution alone.
+
+A linear map can form new combinations. An **affine** map also adds a fixed vector, called a bias: $z\mapsto Bz+b$. But placing two affine maps in succession, with no operation between them, still gives one affine map:
+
+$$
+B_2(B_1z+b_1)+b_2
+=(B_2B_1)z+(B_2b_1+b_2).
+$$
+
+Increasing the intermediate width does not remove this identity. If we want this network to do more than an affine transformation, we must introduce a different operation between the maps.
+
+The original transformer uses the coordinate-wise function
+
+$$
+\operatorname{ReLU}(u)_r=\max(0,u_r).
+$$
+
+Its action depends on the sign of each intermediate coordinate. We can check that it is not linear:
+
+$$
+\operatorname{ReLU}(1+(-1))=0,\qquad
+\operatorname{ReLU}(1)+\operatorname{ReLU}(-1)=1.
+$$
+
+Applying it before adding these two inputs gives a different result from applying it after their addition.
+
+Before naming the full network, follow these operations on the unnormalized vector $z=(0.8,1.9)$. The first map will examine its coordinate sum, their difference, and the negative of the first coordinate. These are three separate quantities obtained from two inputs; the intermediate width lets us keep all three available. ReLU will retain their positive parts, and a second map will return to two coordinates:
+
+$$
+B_1=\begin{pmatrix}1&1\\1&-1\\-1&0\end{pmatrix},
+\qquad
+B_2=\begin{pmatrix}1&0&0\\0&1&-1\end{pmatrix},
+\qquad b_1=b_2=0.
+$$
+
+Then the successive vectors are
+
+$$
+(0.8,1.9)
+\ \xrightarrow{B_1}\ (2.7,-1.1,-0.8)
+\ \xrightarrow{\operatorname{ReLU}}\ (2.7,0,0)
+\ \xrightarrow{B_2}\ (2.7,0).
+$$
+
+Without ReLU, the same two maps would give $(2.7,-0.3)$. The activation changes which intermediate features can contribute to the output.
+
+</Passage>
+
+<BlockStudy kind="feed" />
+
+<Passage id="p-transformer-feed-forward-definition">
+
+The **position-wise feed-forward network** is this construction with adjustable coefficients and biases:
+
+$$
+F(z)=B_2\operatorname{ReLU}(B_1z+b_1)+b_2.
+$$
+
+For an input with $d$ coordinates and an intermediate vector with $d_f$ coordinates, $B_1$ has $d_f$ rows and $d$ columns. The second map has $d$ rows and $d_f$ columns. Thus $B_1\in\mathbb R^{d_f\times d}$ and $B_2\in\mathbb R^{d\times d_f}$; the output returns to the original width.
+
+“Position-wise” means that the same $F$ is applied separately to every row. No row of this network reads another row directly. Its inputs can nevertheless contain context gathered by attention. This is the distinction from [6.1](#layer-purpose): attention exchanges information between positions; this network processes information already available at each position.
+
+Attention itself is already nonlinear through its input-dependent weights. The calculation above explains the nonlinearity introduced by this additional network, rather than a missing nonlinearity in the entire layer. We can give this network a residual connection too, producing $z_i+F(z_i)$.
+
+</Passage>
+
+### 6.5 Controlling the scale
+
+<Passage id="p-transformer-normalization">
+
+Adding an update can change both the common level and the spread of a representation's coordinates. The following linear map responds to these changes as well as to the relative pattern of the coordinates. We can choose to separate those effects: first remove an input-dependent offset and scale, then allow learned parameters to choose new gains and offsets. Let us examine the first part on three numbers.
+
+For a simple example with three coordinates, compare $(1,2,3)$ and $(11,12,13)$. The second vector has a larger common offset, but the differences between corresponding coordinates are the same. Subtracting each vector's coordinate mean gives $(-1,0,1)$ in both cases.
+
+We can also divide by a measure of spread. For $z\in\mathbb R^d$, let
+
+$$
+\mu(z)=\frac1d\sum_{r=1}^d z_r,
+\qquad
+\sigma^2(z)=\frac1d\sum_{r=1}^d(z_r-\mu(z))^2.
+$$
+
+These statistics concern the coordinates of this one vector. They are not averages across the words of the sentence. For $(1,2,3)$, the mean is $2$ and the variance is $2/3$.
+
+To center the coordinates, subtract their mean. To control their spread, divide by their standard deviation. A constant vector has zero variance, so division by $\sigma(z)$ alone would fail there. We add a small fixed $\varepsilon>0$ inside the square root:
+
+$$
+\widehat z=\frac{z-\mu(z)\mathbf1}{\sqrt{\sigma^2(z)+\varepsilon}}.
+$$
+
+With $\varepsilon=10^{-5}$, the vector $(1,2,3)$ gives approximately $(-1.225,0,1.225)$. The shifted vector $(11,12,13)$ gives the same result. Every coordinate uses the same mean and denominator, computed from this one representation.
+
+Centering and dividing impose a common convention on the coordinates. We need not force the next operation to use exactly that scale or zero point. Let $\gamma_r$ multiply coordinate $r$ and let $\beta_r$ shift it. These coefficients can be learned. [Layer normalization](https://arxiv.org/abs/1607.06450) includes this coordinate-wise affine step:
+
+$$
+N(z)=\gamma\odot
+\frac{z-\mu(z)\mathbf1}{\sqrt{\sigma^2(z)+\varepsilon}}
++\beta.
+$$
+
+The notation $\gamma\odot\widehat z$ means multiplying corresponding coordinates: its $r$th coordinate is $\gamma_r\widehat z_r$. Setting every gain to one and every offset to zero leaves $\widehat z$ unchanged. In the animation, change the common input offset first; then turn on the coordinate gains and offsets.
+
+</Passage>
+
+<BlockStudy kind="norm" />
+
+<Passage id="p-transformer-normalization-properties">
+
+This operation makes a choice about information. The shared offset is no longer available from the normalized vector alone. Learned gains and offsets let the model adjust how the normalized coordinates are used; they do not recover an arbitrary offset discarded from a particular input.
+
+Nor should we say that every final vector has variance exactly one. Before the learned gain and offset, its coordinate mean is zero and its variance is
+
+$$
+\frac{\sigma^2(z)}{\sigma^2(z)+\varepsilon}.
+$$
+
+The gain and offset can then change these statistics.
+
+The diagram uses the order of the original transformer: add the residual input, then normalize. We will keep that order consistently in the block we are constructing.
+
+</Passage>
+
+### 6.6 Repeating the construction
+
+<Passage id="p-transformer-block">
+
+We can now follow the left-hand block from bottom to top. Multi-head attention supplies an update based on the sequence. Residual addition combines that update with the incoming representations, and normalization acts on each resulting row. The position-wise network then supplies a further update, followed by another residual addition and normalization.
+
+Before compressing these steps into a formula, keep their intermediate results separate:
+
+<BlockSummaryTable />
+
+Here $N_1,N_2$ have their own gains and offsets. The notation $F_{\mathrm{rows}}$ means using the same network separately on every row.
+
+</Passage>
+
+<BlockStudy kind="block" />
+
+<Passage id="p-transformer-block-definition">
+
+The final animation uses two input positions so that all values can be inspected. For the second position, the two heads produce the weight rows used in [6.2](#parallel-heads); their output map produces $(0.8,0.9)$. The later operations are then computed in the order above. In particular, the feed-forward network receives $U$, after normalization, rather than the unnormalized vector used to inspect the network in [6.4](#processing-features).
+
+We can now substitute the intermediate expressions into one definition:
+
+<Definition>
+
+The **encoder-style transformer block** considered here maps <SymbolMath kind="block-shape" /> by
+
+<SymbolMath kind="encoder-block" />
+
+The attention head parameters, output projection, feed-forward parameters, and normalization parameters belong to this block. This is the post-normalization order in the [original architecture](https://arxiv.org/abs/1706.03762).
+
+</Definition>
+
+The repeated-layer label in the diagram means that the output of one block becomes the input of another. If $X^{(0)}$ is the initial sequence representation, we write
+
+$$
+X^{(\ell+1)}=\mathcal B_\ell(X^{(\ell)}).
+$$
+
+Different layers can have different parameters. Within one layer, the shared maps are reused across positions. The original encoder uses six blocks; the repetition count is a design choice, not a consequence of the attention formula.
+
+Each added operation uses shared maps at the positions. None introduces a new position label. We therefore expect the order limitation from [5.5](#attention-computation) to persist when these operations are assembled. The following proposition makes that expectation precise.
+
+<Proposition>
+
+For this block, with shared maps at all positions and with no mask or other position-dependent term inside it, any permutation matrix $P$ satisfies
+
+$$
+\mathcal B(PX)=P\mathcal B(X).
+$$
+
+</Proposition>
+
+<Proof>
+
+Each attention head has the equivariance proved in [5.5](#attention-computation). Concatenation and the output map act on coordinates, so $\mathcal M(PX)=P\mathcal M(X)$. Residual addition consequently gives
+
+$$
+PX+\mathcal M(PX)=P\bigl(X+\mathcal M(X)\bigr).
+$$
+
+Normalization acts separately on each row, with shared parameters. Permuting the rows therefore permutes the normalized results: $N_1(PZ)=PN_1(Z)$. Thus the first sublayer gives $U'=PU$.
+
+The feed-forward network also acts separately with shared parameters, so $F_{\mathrm{rows}}(PU)=PF_{\mathrm{rows}}(U)$. Applying the same reasoning to the second addition and normalization yields
+
+$$
+\mathcal B(PX)
+=N_2\bigl(PU+PF_{\mathrm{rows}}(U)\bigr)
+=P\,N_2\bigl(U+F_{\mathrm{rows}}(U)\bigr)
+=P\mathcal B(X).
+$$
+
+</Proof>
+
+The block can use position information already present in $X$; the proposition does not remove that information. It says that merely repeating shared row operations does not invent a distinction that the supplied inputs omit.
+
+Return now to the note in [4.5](#comparison-vectors). The first query and key maps acted on individual input vectors. After a block, each representation can contain information gathered from several positions. A later query is still a projection of one incoming vector, but that vector can now be contextual. This is how repeated layers change what is available for the next comparison.
+
+We have constructed the encoder-style block in the architecture. To obtain a language model, we still need to connect representations to predictions and decide which positions may be read when making each prediction. Those questions will lead us to the mask and output probabilities on the decoder side, shown on the right of the [overall architecture diagram](#architecture-heading).
+
+</Passage>
+
+## 7 From representations to predictions
+
+<Passage id="p-prediction-opening">
+
+Consider the unfinished sentence
+
+> The dog chased the …
+
+<ContinuationIllustration />
+
+The representation at its final position may contain information about the dog, the action, and the phrase still to be completed. But a vector is not yet a continuation. We need a rule that relates what the model has represented to what it might say next.
+
+There need not be a unique answer. *Cat* is possible, but so are *ball* and *squirrel*. The sentence gives us reasons to prefer some continuations without determining one. This suggests a different aim from recovering a single word: assign a probability to each possible next token, conditional on the text already supplied.
+
+We shall first examine how a final representation can supply those probabilities. We then return to the more delicate question of which information that representation is allowed to contain.
+
+</Passage>
+
+### 7.1 What should the output describe?
+
+<Passage id="p-prediction-distribution">
+
+Our vocabulary $\mathcal V$ is a finite set of token types, introduced in [2.1](#tokens-and-sequences). Write $m=|\mathcal V|$ for its size. For a prefix $(t_1,\ldots,t_i)$, the desired output is one number for each $v\in\mathcal V$:
+
+$$
+p_\theta(v\mid t_1,\ldots,t_i).
+$$
+
+The subscript $\theta$ collects the model's learned parameters. A larger probability expresses a stronger model preference for that token in this context. It does not establish that the continuation is true, grammatical, or appropriate.
+
+To constitute a distribution, these numbers must be nonnegative and sum to one. Thus we are moving between two different kinds of object: the hidden vector lies in $\mathbb R^d$, while the output lies in
+
+$$
+\Delta^{m-1}=\left\{p\in\mathbb R^m:
+p_v\geq 0,\ \sum_{v\in\mathcal V}p_v=1\right\}.
+$$
+
+This set is called the **probability simplex**. The name records the constraints on the numbers; it does not claim that semantic relationships have become probability coordinates.
+
+</Passage>
+
+### 7.2 One comparison for each vocabulary token
+
+<Passage id="p-prediction-readout">
+
+Let $h_i\in\mathbb R^d$ be the final representation at position $i$. To make a preference among vocabulary entries, we need a score for each one. A learned matrix with one row per token supplies a simple construction:
+
+$$
+z_i=W_Uh_i+b,\qquad
+W_U\in\mathbb R^{m\times d},\quad b\in\mathbb R^m.
+$$
+
+The letter $U$ names the output map; it introduces no new kind of matrix operation. If row $v$ of $W_U$ is $w_v^{\mathsf T}$, its score is
+
+$$
+z_{iv}=w_v^{\mathsf T}h_i+b_v.
+$$
+
+Each row asks a learned numerical question of the same hidden vector. These scores are commonly called **logits**. Like the comparison scores in attention, they need not be positive and do not yet sum to one.
+
+Consider an intentionally small vocabulary, ordered as *dog*, *cat*, *chased*. Take
+
+$$
+h=\begin{pmatrix}0.8\\0.2\end{pmatrix},
+\qquad
+W_U=\begin{pmatrix}2&0\\0&1\\-1&0\end{pmatrix},
+\qquad b=0.
+$$
+
+The first row gives $2(0.8)+0(0.2)=1.6$; the second gives $0.2$; the third gives $-0.8$. This is the same arithmetic as a query projection, with a different destination: there are now as many output coordinates as vocabulary entries.
+
+</Passage>
+
+<ChapterCalculation kind="output" />
+
+<Passage id="p-prediction-not-inverse">
+
+The animation shares its calculation with the output panel in the opening architecture. Its vector and three-token vocabulary are hand-chosen to expose the multiplication. They are not predictions made by a trained language model, and this vector was not obtained by running our unfinished sentence through one.
+
+It is tempting to describe this operation as going backwards through the embedding table. That would obscure its purpose. The input lookup selects a vector for a known token; the output map compares a contextual vector with every vocabulary candidate. It need not recover the token at the current position, and it is not required to invert the lookup.
+
+Some models **tie** the two sets of weights: if $E\in\mathbb R^{m\times d}$ stores the input embeddings as rows, they use $W_U=E$. Even then, multiplying by $E$ produces scores; it does not undo the earlier lookup. The intervening blocks have also changed the representation.
+
+</Passage>
+
+### 7.3 Normalizing the vocabulary scores
+
+<Passage id="p-prediction-softmax">
+
+We already have a way to turn finite scores into positive weights. Applying softmax across the vocabulary gives
+
+$$
+p_\theta(v\mid t_1,\ldots,t_i)
+=\frac{\exp(z_{iv})}
+{\sum_{u\in\mathcal V}\exp(z_{iu})}.
+$$
+
+The familiar operation now normalizes a different collection. Attention normalized candidate **positions**, deciding which values to combine. The output head normalizes candidate **token types**, deciding which continuations to prefer.
+
+For the logits above, subtracting their maximum gives $(0,-1.4,-2.4)$. Exponentiating and dividing by the sum gives approximately
+
+$$
+p=(0.748,\ 0.184,\ 0.068).
+$$
+
+The probabilities sum to one, and *dog* has the largest share in this numerical example. That is all the calculation warrants. Softmax has supplied a distribution, not a reason to trust the hand-chosen parameters.
+
+<Definition>
+
+A **vocabulary readout** maps a final representation $h_i$ to the distribution
+
+$$
+p_i=\operatorname{softmax}(W_Uh_i+b)\in\Delta^{m-1}.
+$$
+
+For a matrix $H$ whose rows are the final representations, the logits are $Z=HW_U^{\mathsf T}+\mathbf1b^{\mathsf T}$; softmax acts on each row independently.
+
+</Definition>
+
+We can now turn a representation into a distribution. But if $h_i$ has already read the token it is meant to predict, the task has become suspiciously easy. The architecture must respect the information available at prediction time.
+
+</Passage>
+
+## 8 Reading only what is available
+
+<Passage id="p-decoder-opening">
+
+Consider predicting *cat* from “The dog chased the”. During generation, *cat* does not yet exist in the input. During training, however, the complete sentence is available to us. An unrestricted attention layer could read its final token while claiming to predict it.
+
+We need not hide the full sentence from the training program. We must instead ensure that each prediction uses only its own prefix. This is a restriction on the computation, not on what the programmer is allowed to know.
+
+Throughout this section, row $i$ contains token $t_i$ and predicts $t_{i+1}$. It may read the current position and earlier ones. Keeping this convention explicit will save us an unnecessary argument with the indices.
+
+</Passage>
+
+### 8.1 A mask before normalization
+
+<Passage id="p-decoder-mask">
+
+The scores in [5.5](#attention-computation) compare every query with every key. At row $i$, the columns $j>i$ therefore describe comparisons with information not yet available. We would like those candidates to receive exactly zero weight.
+
+Setting their scores to zero will not do: $\exp(0)=1$, so they still contribute to the softmax denominator. Instead, exclude them from normalization. A convenient notation adds the matrix
+
+$$
+M_{ij}=
+\begin{cases}
+0,&j\leq i,\\
+-\infty,&j>i
+\end{cases}
+$$
+
+to the scaled score matrix $S$. The symbol $-\infty$ records exclusion; implementations may use a Boolean mask or suitable numerical treatment rather than literally storing this symbol.
+
+Since $\exp(-\infty)=0$, row-wise softmax yields
+
+$$
+a_{ij}=
+\begin{cases}
+\displaystyle\frac{\exp(s_{ij})}{\sum_{r\leq i}\exp(s_{ir})},
+&j\leq i,\\[6pt]
+0,&j>i.
+\end{cases}
+$$
+
+Consequently $h_i=\sum_{j\leq i}a_{ij}v_j$. The query still compares the permitted keys, but no future value enters the sum.
+
+</Passage>
+
+<ChapterCalculation kind="mask" />
+
+<Passage id="p-decoder-mask-interpretation">
+
+In the three-position example, select receiving row $2$. The first two scores survive, the third is excluded, and the last weight becomes zero. The animation carries that zero into the weighted sum. At row $1$, only its own value survives; at row $3$, all three values are available. These numbers come from the same numerical head used in the opening diagram.
+
+<Definition>
+
+**Causal self-attention**, with this indexing convention, is
+
+$$
+\operatorname{Att}_{\mathrm{causal}}(X)
+=\operatorname{softmax}_{\mathrm{rows}}
+\left(\frac{QK^{\mathsf T}}{\sqrt{d_k}}+M\right)V.
+$$
+
+The mask permits $j\leq i$ because the representation at row $i$ predicts the next token, not its own input token.
+
+</Definition>
+
+</Passage>
+
+### 8.2 Why later text cannot leak through another layer
+
+<Passage id="p-decoder-causality">
+
+One masked head is not the whole model. If a later block could introduce future information, masking the first one would provide little comfort. Fortunately, the other operations we constructed act separately at each position.
+
+<Proposition>
+
+Suppose initial row $i$ depends only on token $t_i$ and its position. A stack made from causal self-attention, row-wise feed-forward maps, residual additions, and row-wise normalization has the following property: its output at row $i$ depends only on $t_1,\ldots,t_i$.
+
+</Proposition>
+
+<Proof>
+
+The claim holds at the input. Assume it holds for the incoming rows of a block. The query at $i$ depends on row $i$; every permitted key and value at $j\leq i$ depends only on $t_1,\ldots,t_j$. Their scores, weights, and weighted sum therefore depend only on $t_1,\ldots,t_i$.
+
+Residual addition combines quantities with this same dependence. A row-wise feed-forward map and normalization cannot introduce another position's input. The property thus holds at the block output and, by induction, after every block.
+
+</Proof>
+
+This also explains a useful consequence: appending new tokens leaves the old output rows unchanged, provided positions and deterministic evaluation are kept fixed. We will later use that fact to avoid recomputing old keys and values.
+
+The causal mask is a position-dependent ingredient. The unmasked permutation proposition in [6.6](#repeated-blocks) does not describe this new construction: arbitrary row permutations need not preserve which positions may read which others.
+
+</Passage>
+
+### 8.3 A decoder for one growing sequence
+
+<Passage id="p-decoder-only">
+
+We can now adapt the block from [6.6](#repeated-blocks). Replace its unmasked multi-head attention by causal multi-head attention, leaving the head concatenation and output projection unchanged. With the same post-normalization convention as before, one block is
+
+$$
+U=N_1\bigl(X+\mathcal M_{\mathrm{causal}}(X)\bigr),
+\qquad
+Y=N_2\bigl(U+F_{\mathrm{rows}}(U)\bigr).
+$$
+
+Each layer builds prefix-dependent representations; a vocabulary readout then supplies the next-token distribution at each row. This gives the basic **decoder-only** construction: one token sequence, causal blocks, and an output head. The [GPT construction](https://cdn.openai.com/research-covers/language-unsupervised/language_understanding_paper.pdf) uses this general path.
+
+The term *decoder* can now be understood from its task. It constructs an output sequence by predicting continuations. There is no requirement that a separate encoder must precede it. Particular models also choose different normalization orders, positional mechanisms, and feed-forward functions; the expression above retains our established convention.
+
+</Passage>
+
+### 8.4 When there is a separate source sequence
+
+<Passage id="p-decoder-cross">
+
+Our opening diagram depicts the original encoder–decoder Transformer. To complete its meaning, consider a different problem: translating an already supplied source sentence into a target sentence. The decoder must respect the target prefix, but it should also be able to consult the whole source.
+
+Let $Z\in\mathbb R^{n_s\times d}$ be the encoder's source representations, and let $U\in\mathbb R^{n_t\times d}$ be the target representations after masked self-attention. Here the query and its candidates come from different sequences:
+
+$$
+Q=UW_Q^{\mathsf T},\qquad
+K=ZW_K^{\mathsf T},\qquad
+V=ZW_V^{\mathsf T}.
+$$
+
+Thus $QK^{\mathsf T}$ has shape $n_t\times n_s$: one comparison per target receiver and source candidate. **Cross-attention** uses those comparisons to gather encoder values into the target representations. The source is already known, so it does not need the target's causal mask; source padding still needs exclusion where present.
+
+</Passage>
+
+<ChapterCalculation kind="cross" />
+
+<Passage id="p-decoder-cross-conclusion">
+
+In this example, the decoder query $(0.5,1)$ compares with three encoder keys. Its normalized scores combine three encoder values. The decoder supplies the question in this comparison; the encoder supplies the information being read.
+
+The [original decoder](https://arxiv.org/html/1706.03762v7#S3.SS1) places this additional sublayer between masked self-attention and the feed-forward network, with its own residual addition and normalization. This is the middle attention sublayer on the decoder side of the [overall architecture diagram](#architecture-heading).
+
+Decoder-only language modeling omits this separate source-reading sublayer. Prompt tokens and generated tokens occupy one growing sequence. These are related constructions, but following the right half of the original diagram should not leave us believing that every language model needs an encoder.
+
+</Passage>
+
+## 9 Learning and generating a sequence
+
+<Passage id="p-generation-opening">
+
+Consider what happens after a token has been chosen. The unfinished sentence is now one token longer. We can represent that new prefix and ask for another continuation. The same operation repeats, but its input changes because earlier choices have become part of the context.
+
+This completes the path we began with tokens: a discrete sequence selects input vectors; the blocks build contextual representations; the output head assigns probabilities; a choice supplies a new discrete token. We shall make the probabilistic meaning of this loop precise, then distinguish running it from learning its parameters.
+
+</Passage>
+
+### 9.1 Autoregression is a dependence, not another vector space
+
+<Passage id="p-generation-factorization">
+
+For any distribution over a fixed-length sequence, the probability chain rule gives
+
+$$
+p_\theta(t_1,\ldots,t_N)
+=\prod_{i=1}^{N}p_\theta(t_i\mid t_1,\ldots,t_{i-1}).
+$$
+
+At $i=1$, the condition is an empty prefix, or a supplied beginning-of-sequence token. A language model provides a parameterized approximation to these conditional distributions.
+
+<Definition>
+
+An **autoregressive language model** describes a sequence by predicting each token conditional on its predecessors. Generation applies these conditional distributions in order, appending each chosen token before predicting the next.
+
+</Definition>
+
+The word *autoregressive* names this dependence on the sequence's own earlier tokens. It does not introduce a new geometric space. We still have hidden vectors in $\mathbb R^d$, distributions on the vocabulary, and discrete token sequences. For variable-length text, an end-of-sequence token can express when the sequence finishes.
+
+The factorization does not promise coherent language. Even badly chosen conditionals define a probability for a sequence. Learning must make those conditionals useful.
+
+</Passage>
+
+### 9.2 Where the training answers come from
+
+<Passage id="p-generation-training">
+
+Consider the full sentence “The dog chased the cat.” Every token after the first gives us an example of a continuation. After *the dog*, the observed next token is *chased*; after *the dog chased*, it is *the*. The text supplies its own targets.
+
+Insert a beginning symbol $t_0=\mathrm{BOS}$. Feed the sequence $(t_0,\ldots,t_{N-1})$ into the causal model and compare its row-$i$ prediction with $t_{i+1}$. Input and target arrays are shifted by one position. The mask allows all these rows to be processed together while keeping each prediction dependent on its prefix.
+
+</Passage>
+
+<TrainingShift />
+
+<Passage id="p-generation-loss">
+
+We need a loss that rewards assigning probability to the observed continuation. One choice is the average negative log-likelihood,
+
+$$
+\mathcal L(\theta)
+=-\frac1N\sum_{i=0}^{N-1}
+\log p_\theta(t_{i+1}\mid t_0,\ldots,t_i).
+$$
+
+For a single target, probability $0.8$ gives loss $-\log(0.8)\approx0.223$; probability $0.2$ gives about $1.609$. The logarithm makes low assigned probability costly. This is **cross-entropy** against the target's one-hot distribution.
+
+For one row with logits $z$ and target index $r$, the loss can be written without first taking the logarithm of a tiny probability:
+
+$$
+\ell(z,r)=\log\left(\sum_v e^{z_v}\right)-z_r.
+$$
+
+The derivative of the logarithm is the reciprocal of its argument. The chain rule therefore gives $e^{z_v}/\sum_u e^{z_u}$ for the first term. The derivative of $-z_r$ is $-1$ at the target coordinate and zero at the others. Combining the two terms gives
+
+$$
+\frac{\partial\ell}{\partial z_v}
+=\frac{e^{z_v}}{\sum_u e^{z_u}}-\mathbf1_{\{v=r\}}
+=p_v-\mathbf1_{\{v=r\}}.
+$$
+
+The target coordinate has a negative derivative unless its probability is already one; non-target coordinates have positive derivatives. A gradient step on these logits therefore moves preference toward the target. In the actual model, the chain rule carries this signal through the output map, blocks, and embedding parameters; shared parameters couple the examples.
+
+Training normally supplies the true previous tokens when evaluating each target, often called **teacher forcing**. Generation supplies the model's earlier choices instead. A mistake can consequently change the context for later predictions. A small training loss measures fit to observed continuations; it is not a proof that every generated statement will be reliable.
+
+</Passage>
+
+### 9.3 Choosing a continuation
+
+<Passage id="p-generation-choice">
+
+The model has supplied probabilities, but it has not selected a token. **Greedy decoding** chooses an index with the largest probability. **Sampling** draws an index from the distribution, so a less likely continuation can sometimes occur.
+
+One common way to alter the sampling distribution is a positive **temperature** $\tau$:
+
+$$
+p_v^{(\tau)}
+=\frac{\exp(z_v/\tau)}{\sum_u\exp(z_u/\tau)}.
+$$
+
+For $\tau<1$, differences between logits have a stronger effect; for $\tau>1$, they have a weaker effect. The ordering stays the same. Temperature changes the selection distribution, not the learned parameters, and it does not turn a doubtful assertion into a justified one.
+
+The following loop lets us choose tokens from a small computed model. It uses the embeddings from [2.2](#token-vectors), a two-coordinate causal head, and a displayed vocabulary map. It deliberately omits the full stack: its purpose is to expose the return from an output token to an input vector. The parameters are hand-chosen, so fluent continuations should not be expected.
+
+</Passage>
+
+<GenerationLoop />
+
+<Passage id="p-generation-loop-interpretation">
+
+Follow one step rather than watching only the sentence. The final query reads the available keys; its weights gather values into $h$. The readout produces logits and probabilities. Selecting a token appends its identifier, then the next step retrieves that token's embedding. Each new distribution is recomputed from the resulting prefix.
+
+For a prompted language model, this is commonly separated into **prefill**, which processes the supplied prompt, and **decoding**, which processes newly chosen tokens. Our example recomputes its small head for clarity. A practical implementation can cache previous keys and values because the prefix-dependence proposition leaves earlier rows unchanged.
+
+Generation stops at an end token or a chosen limit. It does not stop merely because a complete English sentence appears: recognizing or enforcing such a condition would be another rule.
+
+</Passage>
+
+### 9.4 From token identifiers to readable text
+
+<Passage id="p-generation-text">
+
+There is one final distinction to recover. Our examples often used whole words as tokens, but a real vocabulary may contain word fragments, punctuation, whitespace markers, or byte pieces. Selecting a token therefore need not finish a word.
+
+Consider a deliberately simple vocabulary containing the pieces “ rest” and “ing”. The two identifiers can decode together to “ resting”. The leading space belongs to the first piece; inserting an extra space between all tokens would produce the wrong text.
+
+</Passage>
+
+<TokenText />
+
+<Passage id="p-generation-text-conclusion">
+
+This illustration joins known text pieces. Actual [tokenizer decoders](https://huggingface.co/docs/tokenizers/main/en/api/decoders) apply the rules of their tokenization scheme, which may include interpreting boundary markers or combining bytes. The neural network does not need a separate word-space layer to do this.
+
+The complete route is now
+
+$$
+\text{token IDs}
+\longrightarrow \text{input vectors}
+\longrightarrow \text{contextual vectors}
+\longrightarrow \text{vocabulary logits}
+\longrightarrow \text{probabilities}
+\longrightarrow \text{chosen IDs}
+\longrightarrow \text{decoded text}.
+$$
+
+The choice of ID is discrete. Gradient-based training learns from the differentiable probability computation; it does not ordinarily differentiate through a sampled token choice in this next-token objective.
+
+</Passage>
+
+### 9.5 What we have constructed
+
+<Passage id="p-generation-ending">
+
+Return to our two chasing sentences. Their difference first required us to preserve order and grammatical relations rather than only the presence of words. We then asked how one occurrence could gather information from its surroundings. That question led to comparisons, weights, transmitted values, and attention. Residual paths and position-wise processing gave us a repeated construction for contextual representations.
+
+Prediction introduced a further requirement: use the available prefix to assign probabilities to continuations. The causal mask enforces that information boundary; the vocabulary readout connects representations to token types; the training objective adjusts the parameters from observed text. Repeated selection and tokenizer decoding turn those probabilities into a growing text sequence.
+
+We have specified computations and established some of their properties. We have not proved that predicting tokens is the same as understanding language. Grammar and semantics remain the motivating questions against which a trained model's behavior must be examined.
+
+There is also a practical question we can now ask precisely. Which parts of this computation must be repeated, which values must be stored, and which approximations are worth making? The companion essays, [Transformers in Practice](https://iamyanbo.github.io/llm-notes/transformers/), extend the construction developed here. They examine changes to position, attention, and the feed-forward layers; inputs from images; learning and adaptation; and the work of generating a sequence. Caching, quantization, and speculative decoding can then be understood in the context of the model they are meant to evaluate.
+
+</Passage>
+
+<Passage id="p-thanks-for-reading">
+
+<ThanksForReading />
+
+</Passage>

@@ -1,0 +1,10 @@
+﻿/* One continuous canvas from the blue neobrutalist palette.
+   Borders and offset shadows belong to the components, not the page. */
+:root{--paper:#f0f4fa}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--paper:#202124}}
+:root[data-theme=dark]{--paper:#202124}
+body{background:var(--paper)}
+.topbar,.essay-header,.reading-column,.contents-rail nav{background:transparent}
+.essay-header{border-inline:0;box-shadow:none;margin-top:0}
+.essay-header::before,.reading-column::before{content:none;display:none}
+.page-shell{padding-bottom:48px}

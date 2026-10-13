@@ -1,0 +1,97 @@
+Consider one weight in a matrix: $-0.63$. Our previous diagrams have treated that decimal as freely available. A machine must store a finite representation of it, move it through memory, and use it in arithmetic.
+
+Quantization asks whether a coarser set of possible values would suffice. To examine the cost of that choice, we should follow a weight onto the grid and then through the same multiplication as before.
+
+## The quantization grid
+
+An integer code does not by itself specify an approximate weight. Choose a positive scale $s$, an integer zero point $z$, and a permitted code interval $[q_{\min},q_{\max}]$. Affine quantization uses
+
+$$
+q=\operatorname{clip}\left(
+\operatorname{round}(w/s)+z,\ q_{\min},q_{\max}\right),
+\qquad
+\hat w=s(q-z).
+$$
+
+The reconstructed value $\hat w$ is what approximates $w$. Rounding chooses a nearby grid point; clipping prevents an out-of-range code. For this demonstration, round to the nearest integer with ties away from zero.
+
+The [PyTorch fake-quantization operation](https://docs.pytorch.org/docs/stable/generated/torch.fake_quantize_per_channel_affine.html) illustrates this quantize/dequantize idea. Its rounding convention is determined by the implementation; our stated convention makes the small interactive example unambiguous.
+
+## Quantized matrix multiplication
+
+Use a symmetric teaching grid with $z=0$, $s=0.1$, and codes $-7$ through $7$. These fit within four bits; we deliberately leave the $-8$ code unused.
+
+$$
+W=\begin{pmatrix}-0.63&-0.18\\0.26&0.70\end{pmatrix}
+\quad\longrightarrow\quad
+q=\begin{pmatrix}-6&-2\\3&7\end{pmatrix}
+\quad\longrightarrow\quad
+\hat W=\begin{pmatrix}-0.6&-0.2\\0.3&0.7\end{pmatrix}.
+$$
+
+For the first entry, $-0.63/0.1=-6.3$ rounds to code $-6$, which is within the allowed interval. Reconstructing gives $0.1(-6)=-0.6$, an error of $+0.03$. The other entries follow the same steps.
+
+For the same column vector $x=(1,2)^{\mathsf T}$, the two outputs are
+
+$$
+Wx=\begin{pmatrix}-0.99\\1.66\end{pmatrix},
+\qquad
+\hat Wx=\begin{pmatrix}-1\\1.70\end{pmatrix}.
+$$
+
+The arithmetic still has its original shape. Its coefficients have changed.
+
+<Lab kind="precision" />
+
+Try decreasing the scale while holding the bit width fixed. The grid becomes finer, but its representable range also becomes narrower. Once a weight is clipped, a fine step size alone does not guarantee a small error.
+
+Conversely, a large scale covers a wider range while discarding more distinctions between nearby values. Scale and bit width must be considered together.
+
+## Reconstruction error
+
+When a weight is rounded to its nearest grid point without clipping, $|\hat w-w|\leq s/2$. This gives a simple bound on one output coordinate.
+
+<Proposition>
+
+For a matrix row $r$, if all its entries use scale $s$ and none is clipped, then
+
+$$
+|(\hat Wx-Wx)_r|
+\leq\frac{s}{2}\sum_j|x_j|.
+$$
+
+</Proposition>
+
+<Proof>
+
+Write $\delta_{rj}=\hat W_{rj}-W_{rj}$. The output difference is $\sum_j\delta_{rj}x_j$. The triangle inequality bounds its magnitude by $\sum_j|\delta_{rj}||x_j|$, and each $|\delta_{rj}|$ is at most $s/2$.
+
+</Proof>
+
+The bound shows why inputs matter: the same weight error can have a larger effect when multiplied by a large activation. It is a local bound on one multiplication, not a prediction of whole-model accuracy. Later nonlinearities and attention operations can change how errors propagate.
+
+## Weight and cache precision
+
+**Weight-only** quantization stores low-bit weights while activations use higher precision; W4A16 names one such combination. **Weight-and-activation** quantization changes both, for example W8A8. **KV-cache quantization** changes the stored past keys and values, a separate part of the memory budget.
+
+Floating formats such as FP8 and FP4 are also low precision, but they do not use the same uniform integer grid as this example. The distribution of representable values and the supported hardware arithmetic differ.
+
+Four displayed FP16 weights have an eight-byte payload. Four packed four-bit codes have a two-byte payload, before scales, zero points, packing, or alignment. For so tiny a matrix, metadata can dominate. For a large model, unquantized layers, activations, KV caches, and workspace remain in addition to compressed weight payload.
+
+Thus “four times smaller” describes a raw 16-to-4-bit weight payload ratio. It is not automatically a ratio for total serving memory.
+
+## Calibration
+
+Uniformly rounding each weight ignores which errors affect outputs most. Representative activations can reveal that some directions deserve more care.
+
+[GPTQ](https://arxiv.org/abs/2210.17323) uses approximate second-order information to reduce layer-output error during post-training quantization. [AWQ](https://arxiv.org/abs/2306.00978) uses activation information for weight-only quantization. “Activation-aware” does not mean that AWQ necessarily stores activations in low-bit form.
+
+The motivation is the same one visible in our bound: numerical error is consequential through the computation in which it participates, rather than through its magnitude alone.
+
+## Implementation notes
+
+[vLLM's quantization documentation](https://docs.vllm.ai/en/stable/features/quantization/) distinguishes supported formats and hardware/backends. Its [quantized KV-cache documentation](https://docs.vllm.ai/en/stable/features/quantization/quantized_kvcache/) discusses cache-specific scales and calibration.
+
+Lower storage can be valuable even when a speed gain is small. Kernel support, conversion work, batch size, and the workload determine whether a chosen format improves latency or throughput. The JavaScript example runs reconstructed arithmetic to explain error; it is not a low-bit GPU benchmark.
+
+We have examined the cost of storing numerical values. The next essay concerns another source of cost: a model can generate intermediate steps before its answer, extending the sequence even though its parameters remain fixed.

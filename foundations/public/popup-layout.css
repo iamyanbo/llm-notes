@@ -1,0 +1,37 @@
+.chapter-attention-canvas{height:760px;aspect-ratio:auto;min-width:0}
+.chapter-atlas[data-chapter-atlas=attention] .chapter-atlas-canvas{background-image:none}
+/* Equations keep their full natural height, including fractions and radicals. */
+.operation-equation,.attention-equations{display:block;flex-shrink:0;max-height:none;min-height:0;overflow-x:auto;padding:12px 8px}
+.operation-equation .katex-display,.attention-equations .katex-display{width:max-content;min-width:100%;margin:6px 0}
+.attention-numeric-packet rect{fill:var(--neo-surface);stroke:var(--blue);stroke-width:1.7}
+.attention-numeric-packet[data-tone=rust] rect{stroke:var(--rust)}
+.attention-numeric-packet text{fill:var(--ink);font:500 13px var(--sans);font-variant-numeric:tabular-nums}
+/* The popup scrolls as one document; the calculation is no longer a clipped inset. */
+.chapter-atlas-dialog .chapter-atlas-layout{display:block}
+.chapter-atlas-dialog .chapter-atlas-canvas{border:0;padding:0;overflow:visible;background-image:none}
+.chapter-atlas-dialog .chapter-atlas-reading{display:block;margin-top:24px}
+.chapter-atlas-dialog .atlas-detail{min-height:0;margin-bottom:16px}
+.chapter-atlas-dialog .atlas-operation-controls{grid-template-columns:repeat(3,minmax(0,1fr))}
+.chapter-atlas-dialog .atlas-play-controls{display:flex;margin-top:14px;padding-top:14px}
+.chapter-atlas-dialog .atlas-play-controls [data-atlas-play]{flex-basis:auto}
+.chapter-atlas-dialog .chapter-architecture-canvas,.chapter-atlas-dialog .chapter-attention-canvas{min-width:0;height:auto;aspect-ratio:auto;max-width:none}
+.chapter-atlas-dialog .chapter-architecture-canvas[data-attention-open=true]>.transformer-svg,
+.chapter-atlas-dialog .chapter-architecture-canvas[data-operation-open=true]>.transformer-svg{display:none}
+.chapter-atlas-dialog .attention-study{position:relative;inset:auto;display:none;height:auto;transform:none;transition:none;padding:20px;box-shadow:none}
+.chapter-atlas-dialog .attention-study[data-expanded=true]{display:flex}
+.chapter-atlas-dialog .attention-study-heading{order:0}
+.chapter-atlas-dialog .attention-study-meta,.chapter-atlas-dialog .operation-study-note,.chapter-atlas-dialog .operation-receivers{order:1}
+.chapter-atlas-dialog .attention-equations,.chapter-atlas-dialog .operation-equation{order:2;font-size:14px;margin:12px 0}
+.chapter-atlas-dialog .attention-computation-scroll,.chapter-atlas-dialog .operation-study-body{order:3;flex:none;min-height:0;overflow:visible}
+.chapter-atlas-dialog .attention-computation-scroll{overflow-x:auto}
+.chapter-atlas-dialog .attention-computation{height:auto;min-width:600px;max-width:760px;margin:auto}
+.chapter-atlas-dialog .operation-diagram{max-width:860px;margin:auto}
+.chapter-atlas-dialog .attention-operation-controls,.chapter-atlas-dialog .operation-stage-controls{order:4}
+.chapter-atlas-dialog .operation-playback{order:5}
+.chapter-atlas-dialog .operation-caption{min-height:0}
+@media(max-width:600px){
+  .chapter-atlas-dialog .attention-study{padding:12px 10px}
+  .chapter-atlas-dialog .atlas-operation-controls{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .chapter-atlas-dialog .attention-equations,.chapter-atlas-dialog .operation-equation{font-size:13px}
+}
+@media(prefers-reduced-motion:reduce){.attention-numeric-packet{display:none}}

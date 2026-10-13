@@ -1,0 +1,55 @@
+Consider the transformer we constructed in the [foundational essay](https://iamyanbo.github.io/llm-notes/foundations/). Its inputs have become representations; attention allows those representations to exchange information; a causal decoder assigns probabilities to the next token. We can follow the calculation. We have not yet settled how to build, train, and run a model that we would actually want to use.
+
+The original [Attention Is All You Need paper](https://arxiv.org/abs/1706.03762), published in 2017, supplied an architecture rather than the last word on these questions. The work that followed changed how models represent position, how their layers communicate, what they receive as input, how they learn, and how their predictions are evaluated on a machine. These notes extend the foundations by examining some of those constructions in detail.
+
+There is no free lunch in engineering. Restricting attention can reduce work while removing a direct route to distant information. A smaller numerical format saves storage while introducing error. Even a method that preserves the mathematical answer may require additional memory or a workload on which its bookkeeping is worthwhile. We shall ask what each construction buys, what it costs, and under which assumptions that exchange is useful.
+
+In Foundations, the sections depended on one another because we were building a single architecture. Here, each essay begins with a question about a particular part of that architecture or its use. They are more independent: one may study a change to attention without first studying quantization. The order below follows the life of a model—construction, learning, then generation—while the references place the ideas in their historical context.
+
+These essays spend more time on the architecture and its computation than on the representation of language, so there will be fewer cute pictures. Sorry about that!
+
+<figure className="essay-illustration interlude"><img src="assets/dog-cat-hiding-boxes.png" width="1774" height="887" loading="lazy" alt="The familiar golden retriever and tabby cat peeking out from behind cardboard boxes." /></figure>
+
+<span id="must-every-token-use-every-parameter" className="anchor-alias" aria-hidden="true"></span>
+<span id="how-should-position-enter-a-comparison" className="anchor-alias" aria-hidden="true"></span>
+
+## Architecture
+
+Position is a natural first question. [RoPE](rope.html) replaces the addition of a position vector with rotations of query and key coordinates. We shall ask why their dot product can depend on the distance between positions, and work through the geometry that makes this possible.
+
+The next question concerns the connections themselves. [Attention variants](attention.html) begins with a sliding window: what happens when a query can read only nearby positions? We can then distinguish sparse patterns from linear attention, whose comparison admits a different way of collecting the values. These changes belong beside the attention construction, rather than being treated as interchangeable ways to make it faster.
+
+[Mixture of experts (MoE)](experts.html) changes the feed-forward sublayer. Instead of applying one large function to every token, we learn a rule for selecting among several functions. [Multimodal inputs](multimodal.html) changes what enters the model: a picture supplies measurements that cannot be obtained by looking up word IDs. In both cases, compatible matrix shapes are only the beginning; the learned computation must make the additional structure useful.
+
+## Learning and adaptation
+
+We have described learned maps without yet choosing their entries. [Pre-training](pretraining.html) starts with recorded text, turns it into prediction problems, and follows a loss into a parameter update. [Post-training](posttraining.html) then asks how demonstrations, preferences, and rewards can specify behavior beyond continuing the training text.
+
+An adaptation objective does not require us to store a separate unrestricted change to every matrix. [LoRA](lora.html) constructs a smaller change from two factors. We shall examine the restriction this imposes before considering the memory it can save.
+
+<span id="which-work-can-we-remember" className="anchor-alias" aria-hidden="true"></span>
+<span id="how-precisely-must-the-matrices-be-stored" className="anchor-alias" aria-hidden="true"></span>
+<span id="can-we-guess-ahead-without-changing-the-desired-probabilities" className="anchor-alias" aria-hidden="true"></span>
+
+## Generation and serving
+
+Once the parameters are fixed, a new difficulty appears. Consider appending one token to a prefix. Earlier causal rows still have the same inputs, so evaluating them again repeats work. [KV cache and FlashAttention](memory.html) asks which quantities can be retained and how the remaining attention calculation can move through memory. Shared KV heads concern the size of that retained state; tiled attention concerns the execution of the calculation.
+
+[Quantization](precision.html) makes us account for the storage of the numbers themselves. Four weights and an integer grid will let us see the reconstruction error before drawing conclusions about a large model.
+
+[Chain of thought](thought.html) returns to the growing sequence. Intermediate text can become context for later predictions, spending additional computation with the same fixed parameters. Finally, [speculative decoding](speculation.html) asks whether a cheaper model can propose several tokens and a target model can verify them while preserving a specified sampling distribution. Its acceptance rule needs a proof; plausible guesses alone do not establish the result.
+
+<span id="what-these-essays-assume" className="anchor-alias" aria-hidden="true"></span>
+
+## Prerequisites
+
+The reader is assumed to be familiar with the following:
+
+- **Elementary mathematical language:** sets, functions, finite sequences, summation notation, and reading a short proof.
+- **Linear algebra:** vectors, matrices, dot products, matrix multiplication, and linear transformations.
+- **Calculus:** derivatives, partial derivatives, gradients, and the chain rule.
+- **Elementary probability:** discrete distributions, conditional probability, and expectation.
+
+We also assume the basic principles of machine learning: a parameterized model, a loss function, training by gradient descent, and evaluation on unseen examples. The language-model construction from Foundations supplies embeddings, queries, keys, values, softmax attention, and the causal generation loop. Its [essay](https://iamyanbo.github.io/llm-notes/foundations/) can serve as a reference when one of these is unfamiliar.
+
+Programming is not required to follow the mathematics or use the interactive examples. Their matrices and inputs are deliberately small and chosen by hand. They establish properties of the displayed calculations; evidence about a trained model will be identified separately.

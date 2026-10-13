@@ -1,0 +1,166 @@
+Consider a decoder reading a long document. The next answer may depend on the sentence just before it, or on a name introduced several pages earlier. Dense causal attention gives the current query a direct comparison with every preceding key. This is a useful freedom, but it is also a commitment to work: at a prefix of length $n$, the new query reads $n$ candidates.
+
+Over a full causal sequence of $n$ positions, the rows have $1,2,\ldots,n$ permitted candidates. The total is $n(n+1)/2$, so the comparison work grows quadratically with sequence length. At fixed head widths, forming the scores and combining their values therefore takes $O(n^2)$ arithmetic. Computing one new query against an already projected prefix takes $O(n)$; it is the work across all the rows that is quadratic.
+
+There are two different ways to question that commitment. We might allow fewer comparisons. Or we might choose a comparison whose weighted sum can be collected without retaining a separate key and value for every position. The first changes the connections between positions; the second changes the numerical construction. We shall begin with the connections, where the consequence can be seen before any new algebra is needed.
+
+## Sliding-window attention
+
+Suppose a query may read only the most recent $w$ positions, including its own. Here $w$ counts positions, rather than the number of steps into the past. Numbering positions from one, the permitted set is
+
+$$
+J_i=\{\max(1,i-w+1),\ldots,i\}.
+$$
+
+The query, key, and value projections have not changed. We have changed which scores may participate in the normalization. Writing $s_{ij}=q_i^{\mathsf T}k_j/\sqrt{d_k}$, the output is
+
+$$
+o_i=\frac{\sum_{j\in J_i}e^{s_{ij}}v_j}{\sum_{j\in J_i}e^{s_{ij}}}.
+$$
+
+An excluded position has weight zero. The included weights must be normalized again: deleting terms from a dense weighted sum without changing the denominator would be a different operation. Even a nearby token's weight can change when we remove a distant candidate.
+
+Take the toy tokens “the dog chased the cat past the gate.” The illustration supplies fixed scores and two-coordinate values. They are chosen for inspection, not learned from the sentence. Move the receiving row and change the window; the table shows exactly which terms disappear and where the remaining weights go.
+
+<ExtensionStudy kind="window" />
+
+A window of three permits the last row to read positions six, seven, and eight directly. It cannot directly read dog at position two. Yet “cannot read directly in this layer” is not the same as “cannot be influenced at all.” A representation at position six can already contain information from earlier layers.
+
+## Receptive fields across layers
+
+In one layer, position $i$ reads at most $w-1$ positions backward. In two layers, it can receive an earlier representation that itself read another $w-1$ positions backward. The possible route grows by composing these connections.
+
+<Proposition>
+
+With the same causal window of $w$ positions in every layer, the representation at position $i$ after $L$ layers can depend only on input positions in
+
+$$
+\{\max(1,i-L(w-1)),\ldots,i\}.
+$$
+
+Every position in that interval has a permitted path to the receiving row. The existence of a path does not assert that the learned model retains the information along it.
+
+</Proposition>
+
+<Proof>
+
+At layer zero, the input at $i$ occupies its own position. One layer reads positions from $i-w+1$ to $i$, with the lower endpoint clipped at one. If each of those representations can depend on another $L(w-1)$ positions backward, their union extends to $i-(L+1)(w-1)$. The windows overlap, so there are no gaps in this interval. Induction gives the stated bound and permitted paths.
+
+</Proof>
+
+The layer control in the illustration displays this possible input influence. With $w=3$ and $i=8$, one layer reaches positions six through eight; two reach four through eight; three reach two through eight. Dog now has a route, but the last query has still not compared directly with its original key. Intermediate representations must carry whatever will be needed.
+
+The [Mistral 7B report (2023)](https://arxiv.org/abs/2310.06825) uses sliding-window attention together with grouped-query attention. For local layers, a rolling cache can discard keys and values that future queries will no longer read. This bounds their retained history. It does not prove that a model retrieves distant details as reliably as one with full attention.
+
+## Sparse attention
+
+A recent window is a reasonable starting point, but some positions may deserve connections across a document. A question at its beginning, for instance, can influence what later passages should contribute to an answer. We can keep local edges and add selected long-range edges.
+
+[Longformer (2020)](https://arxiv.org/abs/2004.05150) combines local windows with designated global positions. [BigBird (2020)](https://arxiv.org/abs/2007.14062) also adds random long-range connections. Their original document-encoder constructions are bidirectional. A decoder must still impose $j\leq i$ on every added connection; calling a position global does not permit it to read the future.
+
+The illustration below uses a small causal teaching pattern, initially set to **Local + anchors**. Positions one and two are designated anchors. An anchor row reads its available prefix; other rows read their window and any earlier anchors. This is a mask comparison, not a reproduction of Longformer's separately learned global projections. Watch the edge count and the restored distant terms change together, then switch to the window alone to see which connections it removes.
+
+<ExtensionStudy kind="anchors" />
+
+With bounded windows and bounded numbers of extra connections per row, the number of edges grows linearly with sequence length. Dense attention has quadratically many pairs over a whole sequence. Reducing that edge count restricts the direct communication that the architecture permits. Selecting useful sparse connections is part of the model design, rather than a conclusion supplied by the counting argument.
+
+## Kernel attention
+
+The window reduced work by restricting which positions can contribute. Its possible routes through several layers do not restore every direct comparison. Suppose we want to let every earlier position contribute while avoiding an ever-longer list of separate comparisons. Could we collect the earlier keys and values into a fixed amount of state, then let each new query read that state?
+
+A sum of the values is too simple. It would give every query the same collected information, regardless of what the query is asking for. We need the stored quantity to retain a relation between keys and values, and the query to select information through that relation. For ordinary softmax attention, the numerator contains
+
+$$
+\sum_{j\leq i}e^{q_i^{\mathsf T}k_j/\sqrt{d_k}}v_j.
+$$
+
+The query sits inside each exponential: we cannot evaluate those terms until the query is available. A different similarity may let us rearrange the sum. Begin with the simplest candidate, a dot product $q^{\mathsf T}k$. By distributing over the sum,
+
+$$
+\sum_j(q^{\mathsf T}k_j)v_j
+=\left(\sum_j k_jv_j^{\mathsf T}\right)^{\mathsf T}q.
+$$
+
+The matrix in parentheses can be collected before we know $q$. But unrestricted dot products can be negative, so we cannot generally normalize them into nonnegative attention weights. We need a comparison with both properties: a separable dot product for the rearrangement, and nonnegative similarities for the normalization.
+
+Suppose we choose a feature map $\phi:\mathbb R^{d_k}\to\mathbb R^r$ and use
+
+$$
+\kappa(q,k)=\phi(q)^{\mathsf T}\phi(k)
+$$
+
+as the similarity. The feature map gives us coordinates in which to make that comparison; a nonnegative feature map is one way to ensure nonnegative dot products. Assume the similarities are nonnegative and their sum for a receiving query is positive. We can then normalize them into weights. This is a new attention rule; an arbitrary finite feature map does not reproduce the exponential above.
+
+Before collecting a sequence, consider one key. Its feature column $\phi(k_j)$ has $r$ entries; its value column $v_j$ has $d_v$ entries. Their outer product $\phi(k_j)v_j^{\mathsf T}$ has shape $r\times d_v$. Each column stores a value coordinate multiplied by every key-feature coordinate. It is information that a later query feature can read by a dot product.
+
+## The recurrent state
+
+We have found something to store, but normalized attention needs more than a numerator. The query must also know the total similarity to the available keys. Otherwise doubling every similarity would double the output rather than leave the normalized combination unchanged. We shall collect one quantity for the weighted values and another for their normalization.
+
+Define a matrix $S_i\in\mathbb R^{r\times d_v}$ and a column $z_i\in\mathbb R^r$ by
+
+$$
+S_i=\sum_{j\leq i}\phi(k_j)v_j^{\mathsf T},\qquad z_i=\sum_{j\leq i}\phi(k_j).
+$$
+
+The first collects the products needed for the numerator. The second collects the features needed for the denominator. Adding one position requires only
+
+$$
+S_i=S_{i-1}+\phi(k_i)v_i^{\mathsf T},\qquad z_i=z_{i-1}+\phi(k_i),
+$$
+
+starting from zero. The query reads these two pieces of state:
+
+$$
+o_i=\frac{S_i^{\mathsf T}\phi(q_i)}{z_i^{\mathsf T}\phi(q_i)}.
+$$
+
+For a numerical case, take two key features $(1,0)^{\mathsf T}$ and $(0,1)^{\mathsf T}$, with values $(1,0)^{\mathsf T}$ and $(0,2)^{\mathsf T}$. Their outer products accumulate as
+
+$$
+S_2=
+\begin{pmatrix}1\\0\end{pmatrix}\begin{pmatrix}1&0\end{pmatrix}
++\begin{pmatrix}0\\1\end{pmatrix}\begin{pmatrix}0&2\end{pmatrix}
+=\begin{pmatrix}1&0\\0&0\end{pmatrix}
++\begin{pmatrix}0&0\\0&2\end{pmatrix}
+=\begin{pmatrix}1&0\\0&2\end{pmatrix}.
+$$
+
+The key features add to $z_2=(1,1)^{\mathsf T}$. A query feature $(2,1)^{\mathsf T}$ reads the two columns of $S_2$, producing numerator $(2,2)^{\mathsf T}$; its dot product with $z_2$ gives denominator $2+1=3$. The output is $(2/3,2/3)^{\mathsf T}$—the same result as combining the two values with normalized similarities $2/3$ and $1/3$.
+
+The next illustration follows the new outer product into the matrix and then follows the query through its readout. Its nonnegative vectors are already feature vectors; it does not silently apply a learned projection or claim to reproduce a trained model.
+
+<ExtensionStudy kind="linear" />
+
+<Proposition>
+
+The state readout equals the normalized weighted sum for the chosen kernel:
+
+$$
+\frac{S_i^{\mathsf T}\phi(q_i)}{z_i^{\mathsf T}\phi(q_i)}
+=\frac{\sum_{j\leq i}\kappa(q_i,k_j)v_j}{\sum_{j\leq i}\kappa(q_i,k_j)}.
+$$
+
+</Proposition>
+
+<Proof>
+
+Substitute the sum defining $S_i$ into the numerator. Each transposed outer product contributes $v_j\phi(k_j)^{\mathsf T}\phi(q_i)=v_j\kappa(q_i,k_j)$. Substitution into the denominator gives the sum of those same similarities. The assumed positive denominator permits the division.
+
+</Proof>
+
+For fixed $r$ and $d_v$, processing $n$ positions takes $O(nrd_v)$ arithmetic and retains $rd_v+r$ state entries per head for this recurrent calculation. This is why the construction is called linear attention: its sequence-length cost is linear. It does not mean the normalized output is a linear function of every input.
+
+The [linear Transformer paper (2020)](https://arxiv.org/abs/2006.16236) develops this construction using positive features such as $\phi(x)=\operatorname{ELU}(x)+1$. Our reassociation is exact for the selected kernel. The choice of kernel changes which distinctions queries can make; a fixed-size aggregate also ceases to retain separately addressable keys and values. Training must make that state useful for the intended tasks.
+
+## Softmax approximation and other variants
+
+Our fixed-state construction obtained a saving by choosing a different comparison. What if we want to remain close to the softmax comparison that an ordinary head uses? Its similarity is the **exponential kernel**, $e^{q^{\mathsf T}k/\sqrt{d_k}}$. We can ask for feature dot products that approximate this particular function, rather than choose a new similarity without regard to it.
+
+[Performer (2020)](https://arxiv.org/abs/2009.14794) uses positive random features for that approximation. This connects it to the same accumulated-state calculation: once features have been chosen, their outer products and feature sums can be collected as above. Increasing the number of features changes both cost and approximation quality. The finite approximation is not an identity, and unbiased estimates of a numerator and denominator do not make their ratio unbiased.
+
+Other variants answer a separate question: how much key/value information is stored for multiple query heads? [MQA (2019)](https://arxiv.org/abs/1911.02150) shares one KV head; [GQA (2023)](https://arxiv.org/abs/2305.13245) shares within groups. [MLA, introduced in DeepSeek-V2 (2024)](https://arxiv.org/abs/2405.04434), uses a learned compressed KV latent together with a separate positional key. These can still apply dense softmax over the accessible positions. They do not become linear attention merely because their cache is smaller.
+
+The [KV-cache chapter](memory.html) examines head sharing and the execution of dense attention. FlashAttention preserves that attention formula in exact real arithmetic while changing how it is evaluated through memory. Sparse masks, kernel features, shared heads, and tiled execution therefore concern different parts of the calculation, and several can coexist in one model.
+
+We have changed how positions communicate. The next essay keeps the attention output as its input and asks whether every token must pass through every parameter of one large feed-forward function. That question leads to mixture of experts.
