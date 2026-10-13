@@ -24,12 +24,12 @@ test('the map covers all eleven chapters, preserving their parts and real destin
   assert.deepEqual(OVERVIEW_PARTS.map(p=>p.id),['architecture','learning','generation']);
   assert.deepEqual(OVERVIEW_PARTS.map(p=>OVERVIEW_TOPICS.filter(t=>t.part===p.id).length),[4,3,4]);
   assert.equal(surface.querySelectorAll('button[data-overview-select]').length,11);
-  assert.equal(surface.querySelector('[data-overview-canvas]').querySelectorAll('.map-hotspot').length,11);
+  assert.equal(surface.querySelector('[data-overview-canvas]').querySelectorAll('.map-hotspot').length,1);
   assert.equal(surface.querySelector('[data-overview-canvas]').querySelectorAll('.map-hotspot[data-active=true]').length,1);
   const ids=[...surface.querySelectorAll('[id]')].map(el=>el.id);assert.equal(new Set(ids).size,ids.length);
   for(const topic of OVERVIEW_TOPICS){
     assert.ok(document.getElementById(topic.id));
-    assert.equal(surface.querySelector(`[data-topic="${topic.id}"]`).getAttribute('href'),'#'+topic.id);
+    assert.ok(surface.querySelector(`button[data-overview-select="${topic.id}"]`));
     assert.equal(surface.querySelector(`button[data-overview-select="${topic.id}"]`).closest('.overview-part').querySelector('h3').id,'overview-'+topic.part);
   }
   assert.match(surface.textContent,/Schematic overview/);
@@ -39,7 +39,8 @@ test('the map covers all eleven chapters, preserving their parts and real destin
 test('the enlarged map shares topic and playback state, and its motion paths have distinct IDs',()=>{
   const f=fixture();f.controller.select('memory');f.click('[data-overview-enlarge]');
   const dialog=f.document.querySelector('[data-overview-dialog]');assert.ok(dialog.hasAttribute('open'));
-  f.click('[data-overview-expanded] [data-topic=lora]');
+  f.click('[data-overview-dialog] [data-overview-restart]');
+  for(let i=0;i<6;i++)f.click('[data-overview-dialog] [data-overview-next]');
   for(const canvas of f.document.querySelectorAll('[data-overview-canvas],[data-overview-expanded]')){
     assert.equal(canvas.querySelector('.map-hotspot[data-active=true]').dataset.topic,'lora');
   }
@@ -99,7 +100,7 @@ test('manual inspection cancels playback, preserves topic controls, and updates 
   assert.equal(f.document.querySelector('button[data-overview-select=lora]'),button);
   assert.equal(f.document.querySelector('[data-overview-read]').getAttribute('href'),'#lora');
   assert.match(f.document.querySelector('[data-overview-description]').textContent,/base matrix fixed/);
-  f.click('.map-hotspot[data-topic=thought]');assert.equal(f.controller.state().topic,'thought');
+  f.click('button[data-overview-select=thought]');assert.equal(f.controller.state().topic,'thought');
   f.click('[data-overview-next]');assert.equal(f.controller.state().topic,'speculation');
   f.click('[data-overview-restart]');assert.equal(f.controller.state().topic,'rope');
 });

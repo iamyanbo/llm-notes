@@ -79,3 +79,18 @@ test('the public source excludes source hosting identities and draft comment arc
   assert.ok(document.querySelector('a[href="foundations/"]'));
   assert.ok(document.querySelector('a[href="transformers/"]'));
 });
+
+test('every public page uses the same tab icon with existing SVG, PNG, and ICO files',async()=>{
+  let version;
+  for(const file of htmlFiles){
+    const {document}=parseHTML(await readFile(file,'utf8'));
+    const svg=document.querySelector('link[rel=icon][type="image/svg+xml"]');assert.ok(svg,file);
+    const png=document.querySelector('link[rel=icon][type="image/png"]');assert.ok(png,file);
+    const ico=document.querySelector('link[rel="shortcut icon"]');assert.ok(ico,file);
+    const base=new URL(path.relative(root,file).replaceAll(path.sep,'/'),siteUrl);
+    const ref=svg.getAttribute('href');
+    if(version===undefined)version=ref;else assert.equal(ref,version);
+    for(const icon of [svg,png,ico])await access(localFile(icon.getAttribute('href'),base).file);
+    assert.doesNotMatch(ref,/^data:/);
+  }
+});
