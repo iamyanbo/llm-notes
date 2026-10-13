@@ -84,17 +84,20 @@ for(const page of pages){
  const {default:Essay}=await evaluate(source,{...runtime,baseUrl:pathToFileURL(process.cwd()+'/'),remarkPlugins:[remarkMath],rehypePlugins:[rehypeKatex]});
  const prefix=page.slug==='index'?'':page.slug+'-';
  const headingAnchor=title=>headingAnchors[page.slug]?.[title]??anchors(title);
- const heading=level=>({children})=>React.createElement(level,{id:prefix+headingAnchor(String(children))},children);
+ const headings=[...source.matchAll(/^## (.+)$/gm)].map((m,i)=>({title:m[1],id:prefix+headingAnchor(m[1]),old:headingAnchor(m[1]),number:page.slug==='index'?null:`${Number(page.number)}.${i+1}`}));
+ const heading=level=>({children})=>{
+   const title=String(children),number=level==='h3'?headings.find(h=>h.title===title)?.number:null;
+   return React.createElement(level,{id:prefix+headingAnchor(title)},number?`${number} `:null,children);
+ };
  const body=renderToStaticMarkup(React.createElement(Essay,{components:{...components,h2:heading('h3'),h3:heading('h4')}}))
    .replace(/href="(index|memory|experts|precision|speculation|rope|attention|pretraining|posttraining|lora|thought|multimodal)\.html"/g,(_,slug)=>`href="#${slug==='index'?'introduction':slug}"`);
- const headings=[...source.matchAll(/^## (.+)$/gm)].map(m=>({title:m[1],id:prefix+headingAnchor(m[1]),old:headingAnchor(m[1])}));
  chapters.push({...page,body,headings,id:page.slug==='index'?'introduction':page.slug});
  console.log(page.slug+': '+source.split(/\s+/).length+' words');
 }
 function contentsList(mobile=false){
  const link=(chapter,id,title,number,main=false)=>`<a class="toc-link ${main?'contents-section':mobile?'contents-subsection':'toc-subsection'}" href="#${id}" data-contents-link="${id}" data-contents-owner="${chapter.id}" ${main?`data-chapter-link="${chapter.id}"`:''}><span class="contents-number">${number}</span><span class="contents-title">${escape(title)}</span></a>`;
  const introduction=`<a class="toc-link" href="#introduction" data-chapter-link="introduction" data-contents-link="introduction" data-contents-owner="introduction">Introduction</a>`;
- const sections=chapters.slice(1).map((chapter,i)=>`${i===0||chapter.part!==chapters[i].part?`<li class="contents-part">${escape(chapter.part)}</li>`:''}<li><details data-contents-chapter="${chapter.id}"><summary>${link(chapter,chapter.id,chapter.title,Number(chapter.number),true)}<span class="contents-expand" aria-hidden="true"></span></summary><ul class="contents-subsections">${chapter.headings.map((heading,i)=>`<li>${link(chapter,heading.id,heading.title,`${Number(chapter.number)}.${i+1}`)}</li>`).join('')}</ul></details></li>`).join('');
+ const sections=chapters.slice(1).map((chapter,i)=>`${i===0||chapter.part!==chapters[i].part?`<li class="contents-part">${escape(chapter.part)}</li>`:''}<li><details data-contents-chapter="${chapter.id}"><summary>${link(chapter,chapter.id,chapter.title,Number(chapter.number),true)}<span class="contents-expand" aria-hidden="true"></span></summary><ul class="contents-subsections">${chapter.headings.map(heading=>`<li>${link(chapter,heading.id,heading.title,heading.number)}</li>`).join('')}</ul></details></li>`).join('');
  return introduction+`<ul class="contents-sections">${sections}</ul><a class="toc-link" href="#ending-thoughts" data-contents-link="ending-thoughts" data-contents-owner="ending-thoughts">Ending thoughts</a>`;
 }
 const sidebar=`<aside class="contents-rail"><nav aria-label="Contents"><span class="rail-label">Contents</span>${contentsList()}</nav></aside>`;

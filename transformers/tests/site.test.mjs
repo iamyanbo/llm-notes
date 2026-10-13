@@ -39,6 +39,29 @@ test('chapter navigation stays in one document and legacy subsection links remai
  }
 });
 
+test('article subsection numbers match desktop and mobile contents on every entry page',()=>{
+ for(const {document,slug} of pages){
+   for(const rail of document.querySelectorAll('.contents-rail,.mobile-contents')){
+     for(const chapter of rail.querySelectorAll('[data-contents-chapter]')){
+       const owner=chapter.dataset.contentsChapter;
+       const chapterNumber=chapter.querySelector('[data-chapter-link] .contents-number').textContent;
+       const links=[...chapter.querySelectorAll('.contents-subsections a')];
+       assert.ok(links.length>0,slug+' '+owner);
+       links.forEach((link,index)=>{
+         const number=link.querySelector('.contents-number').textContent;
+         const title=link.querySelector('.contents-title').textContent;
+         assert.equal(number,chapterNumber+'.'+(index+1));
+         const heading=document.getElementById(link.getAttribute('href').slice(1));
+         assert.equal(heading.tagName,'H3');
+         assert.equal(heading.parentElement.id,owner);
+         assert.equal(heading.textContent,number+' '+title,slug+' '+heading.id);
+       });
+     }
+   }
+   for(const heading of document.querySelectorAll('#introduction>h3'))assert.doesNotMatch(heading.textContent,/^0\.\d/);
+ }
+});
+
 test('mathematical statements have chapter numbers and the RoPE proof links to its lemma',()=>{
  const {document}=pages[0];
  for(const statement of document.querySelectorAll('.statement')){
@@ -54,8 +77,8 @@ test('mathematical statements have chapter numbers and the RoPE proof links to i
 
 test('renamed subsections retain earlier links and the merged capacity passage stays addressable',()=>{
  const {document}=pages[0];
- for(const [id,title] of [['rope-let-position-determine-the-angle','Position-dependent rotations'],['posttraining-compare-changes-in-relative-support','Direct preference optimization'],['attention-linear-attention-begins-with-the-weighted-sum','Kernel attention']]){
-  assert.equal(document.getElementById(id).textContent,title);
+ for(const [id,title,number] of [['rope-let-position-determine-the-angle','Position-dependent rotations','1.4'],['posttraining-compare-changes-in-relative-support','Direct preference optimization','6.4'],['attention-linear-attention-begins-with-the-weighted-sum','Kernel attention','2.4']]){
+  assert.equal(document.getElementById(id).textContent,number+' '+title);
   assert.equal(document.querySelector('.contents-rail a[href="#'+id+'"]').querySelector('.contents-title').textContent,title);
  }
  assert.ok(document.getElementById('experts-stored-capacity-is-not-active-arithmetic'));
