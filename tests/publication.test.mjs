@@ -74,10 +74,11 @@ test('the public source excludes source hosting identities and draft comment arc
     assert.ok(content.every(file=>file.endsWith('.mdx')));
     assert.ok(!content.includes('page-archive.json'));
   }
-  assert.equal(htmlFiles.length,14);
+  assert.equal(htmlFiles.length,15);
   const {document}=parseHTML(await readFile('dist/index.html','utf8'));
   assert.ok(document.querySelector('a[href="foundations/"]'));
   assert.ok(document.querySelector('a[href="transformers/"]'));
+  assert.ok(document.querySelector('a[href="miscellaneous/"]'));
 });
 
 test('every public page uses the same tab icon with existing SVG, PNG, and ICO files',async()=>{

@@ -4,6 +4,7 @@ Interactive mathematical essays by Yanbo, published at https://iamyanbo.github.i
 
 - [Foundations](https://iamyanbo.github.io/llm-notes/foundations/): grammar, representations, attention, transformers, causal decoding, training, and generation.
 - [Transformers in Practice](https://iamyanbo.github.io/llm-notes/transformers/): architecture, learning and adaptation, generation and serving.
+- [Miscellaneous Topics](https://iamyanbo.github.io/llm-notes/miscellaneous/): proposed essays on hardware, compute, serving systems, evaluation, agents, ethics, and safety. Outlines and sources are stored in `miscellaneous/topics.mjs`; full essays will be added separately.
 
 The essays build from MDX to static HTML. Mathematical typesetting uses KaTeX; numerical animations run in the browser. There is no hosted model or application server. Commenting controls, annotation scripts, and archived draft feedback are excluded from this public edition.
 

@@ -4,3 +4,5 @@
 @media(max-width:850px){.essay-card{grid-template-columns:1fr}figure{border-left:0;border-top:2px solid var(--ink)}figure img{max-width:660px;margin:auto}.companion figure img{max-width:440px}.page{padding:0 28px}.introduction{padding-top:55px}}
 @media(max-width:480px){body{font-size:18px}.page{padding:0 20px}.masthead{padding:25px 0}.masthead nav{gap:15px;font-size:12px}.lede{font-size:23px}.card-copy{padding:28px 24px}h2{font-size:28px}.introduction{padding-bottom:38px}figure{padding:18px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.read-link:hover{transform:none}}
+.collection-preview{display:flex;align-items:center;padding:30px 36px;border-left:2px solid var(--ink);background:var(--paper)}.collection-preview ol{list-style:decimal-leading-zero;margin:0;padding-left:35px;font:500 20px/1.8 var(--serif)}.collection-preview li{padding-left:12px;margin:8px 0}.collection-preview li::marker{color:var(--blue);font:600 11px var(--sans)}
+@media(max-width:850px){.collection-preview{border-left:0;border-top:2px solid var(--ink);padding:24px 36px}.collection-preview ol{font-size:18px}}
