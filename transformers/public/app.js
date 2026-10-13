@@ -1,5 +1,6 @@
-import {LAB_LABELS,cacheView,tilesView,expertsView,precisionView,speculationView,heroView} from './views.js';
+import {LAB_LABELS,cacheView,tilesView,expertsView,precisionView,speculationView} from './views.js';
 import {animateFlow} from './flow.js';
+import {createOverview} from './overview-controller.js';
 import {createReaderNavigation,createReadingProgress} from './reader.js';
 import {createRopeStudies} from './rope-controller.js';
 import {createExtensionStudies} from './extension-controller.js';
@@ -35,17 +36,7 @@ export function createLabs(root=document,{schedule=setTimeout,cancel=clearTimeou
 }
 createLabs();
 if(typeof window!=='undefined'){createReaderNavigation(document,window);createReadingProgress(document,window);createRopeStudies(document,{motion:preference});createExtensionStudies(document,{motion:preference});}
-const hero=document.querySelector('[data-hero-view]');
-if(hero){
-  let step=0,playing=false,timer=null;
-  const stop=()=>{clearTimeout(timer);timer=null;playing=false;};
-  const render=()=>{hero.innerHTML=heroView(step);hero.querySelector('svg')?.pauseAnimations?.();if(playing&&!preference.matches)hero.querySelector('svg')?.unpauseAnimations?.();document.querySelectorAll('[data-hero-step]').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.heroStep)===step)));const b=document.querySelector('[data-hero-play]');b.textContent=playing?'Pause':'Follow the questions';b.setAttribute('aria-pressed',String(playing));};
-  const advance=()=>{if(playing&&step<3)timer=setTimeout(()=>{timer=null;step++;if(step===3)playing=false;render();advance();},2300);};
-  document.querySelectorAll('[data-hero-step]').forEach(b=>b.addEventListener('click',()=>{stop();step=Number(b.dataset.heroStep);render();}));
-  document.querySelector('[data-hero-play]').addEventListener('click',()=>{const resume=!playing;stop();if(resume){if(preference.matches){step=3;render();return;}if(step===3)step=0;playing=true;}render();advance();});
-  document.addEventListener('visibilitychange',()=>{if(document.hidden){stop();render();}});
-  preference.addEventListener?.('change',()=>{if(preference.matches){stop();render();}});render();
-}
+createOverview(document,{motion:preference});
 const theme=document.querySelector('[data-theme-toggle]');let choice;
 try{choice=localStorage.getItem('language-notes-theme');}catch{}
 if(choice==='light'||choice==='dark')document.documentElement.dataset.theme=choice;
