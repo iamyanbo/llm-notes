@@ -1,0 +1,59 @@
+.hero-subtitle{font:400 22px/1.65 var(--serif);max-width:470px;color:var(--muted);margin:0}
+.essay-header{grid-template-columns:minmax(0,.9fr) minmax(0,1.2fr);gap:42px}
+.hero-copy{padding:30px 0 54px}
+.essay-header h1{font-size:clamp(42px,4.3vw,70px)}
+.system-plate{margin:0;min-width:0;padding:16px 18px 18px;border:2px solid var(--neo-border);border-radius:5px;background:var(--blue-wash);box-shadow:8px 8px 0 var(--neo-border);font:400 12px/1.6 var(--sans)}
+.system-heading{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:0 0 12px;border-bottom:2px solid var(--neo-border);font-weight:700;font-size:13px}
+.system-canvas{overflow-x:auto;margin:12px -4px 0;scrollbar-width:thin;overscroll-behavior:contain}
+.system-notebook{display:block;width:100%;height:auto;min-width:560px;color:var(--ink);overflow:visible}
+.notebook-fold{stroke:var(--ink);stroke-width:1;fill:none;opacity:.15}
+.notebook-binding{stroke:var(--ink);stroke-width:1.5;fill:none;opacity:.45}
+.notebook-note{fill:var(--muted);font-family:var(--sans);font-weight:600;font-size:9px;letter-spacing:1.2px}
+.notebook-topic{cursor:pointer;outline:none;transition:translate 200ms ease}
+.notebook-topic[data-active=true]{translate:-2px -2px}
+.topic-shadow{fill:var(--neo-border)}
+.topic-face{fill:var(--neo-surface);stroke:var(--neo-border);stroke-width:1.7}
+.topic-number{fill:var(--blue);font-family:var(--sans);font-weight:700;font-size:9px}
+.topic-title{fill:var(--ink);font-family:var(--sans);font-weight:700;font-size:15px}
+.topic-subtitle{fill:var(--muted);font-family:var(--sans);font-weight:400;font-size:10px}
+.topic-rule{stroke:var(--ink);stroke-width:.8;opacity:.2}
+.notebook-topic[data-active=true] .topic-face{fill:var(--blue-wash);stroke:var(--blue);stroke-width:2.5}
+.notebook-topic[data-active=true] .topic-title{fill:var(--blue)}
+.notebook-topic:hover .topic-face,.notebook-topic:focus-visible .topic-face{stroke:var(--blue);stroke-width:3}
+.notebook-topic:focus-visible .topic-title{text-decoration:underline}
+.topic-miniature{opacity:.65;transition:opacity 200ms}.notebook-topic[data-active=true] .topic-miniature{opacity:1}
+.topic-meter{fill:var(--neo-main)}
+.mini-outline,.request-row,.context-page,.context-note,.decision-box{fill:var(--neo-surface);stroke:var(--ink);stroke-width:1.2}
+.mini-wire,.mini-axis,.chip-pins,.decision-wire,.note-lines{fill:none;stroke:var(--ink);stroke-width:1.2}
+.mini-axis{opacity:.6}.mini-label{fill:var(--ink);font-family:var(--sans);font-weight:500;font-size:9px}
+.gpu-tile,.cache-block{fill:var(--blue-wash);stroke:var(--ink);stroke-width:.8}
+.gpu-tile[data-lit=true],.cache-block[data-lit=true],.decision-box[data-lit=true]{fill:var(--neo-main)}
+.mini-signal,.curve-point,.evidence-point{fill:var(--rust);stroke:var(--ink);stroke-width:1}
+.learning-curve{fill:none;stroke:var(--blue);stroke-width:2}
+.context-note{fill:var(--neo-warm)}
+.evidence-track{stroke:var(--ink);stroke-width:1;opacity:.2}.evidence-interval{stroke:var(--blue);stroke-width:4}.inspection-rule{stroke:var(--rust);stroke-width:1.6;stroke-dasharray:3 3}
+.opening-controls{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap;padding-top:10px}
+.opening-buttons{display:flex;gap:8px}
+.opening-buttons button{min-height:35px;padding:6px 10px;background:var(--neo-surface);border:2px solid var(--neo-border);border-radius:4px;box-shadow:3px 3px 0 var(--neo-border);font:600 11px var(--sans);transition:transform 140ms,box-shadow 140ms}
+.opening-buttons button:hover{transform:translate(3px,3px);box-shadow:none}
+.opening-buttons [data-opening-play]{background:var(--neo-main);color:#171717}
+.opening-scrubber{display:flex;align-items:center;gap:8px;font:500 11px var(--sans);color:var(--muted)}
+.opening-scrubber input{width:95px;accent-color:var(--blue)}
+.opening-scrubber output{font-variant-numeric:tabular-nums;min-width:30px;color:var(--ink)}
+.opening-caption{padding-top:15px;margin-top:16px;border-top:2px solid var(--neo-border);min-height:118px}
+.opening-caption strong{font-size:14px;display:block}
+.opening-caption p{font:400 12px/1.7 var(--sans);margin:7px 0 8px;max-width:620px}
+.opening-caption a{font:600 11px var(--sans);color:var(--blue);text-decoration:none}
+.opening-caption a:hover{text-decoration:underline}
+.opening-note{font:400 10px/1.7 var(--sans);color:var(--muted);margin:15px 0 0}
+.system-dialog{width:min(1050px,calc(100% - 40px));max-height:calc(100svh - 40px);padding:25px;border:2px solid var(--neo-border);border-radius:5px;background:var(--paper);color:var(--ink);box-shadow:8px 8px 0 var(--neo-border);overflow:auto}
+.system-dialog::backdrop{background:#17253585;backdrop-filter:blur(4px)}
+.system-dialog-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px;font-family:var(--sans)}
+.system-dialog-heading h2{font:700 23px var(--sans);margin:0}
+.system-dialog-heading button{border:2px solid var(--neo-border);border-radius:4px;padding:8px 14px;background:var(--neo-surface);box-shadow:3px 3px 0 var(--neo-border);font:600 12px var(--sans)}
+.system-dialog .system-plate{max-width:860px;margin:auto}
+.system-dialog .system-notebook{min-width:560px}
+@media(max-width:1000px){.essay-header{grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:24px}.essay-header h1{font-size:clamp(35px,4.5vw,52px)}.hero-subtitle{font-size:20px}.system-plate{padding:14px}}
+@media(max-width:760px){.essay-header{display:block;padding:40px 24px 40px}.essay-header h1{font-size:clamp(38px,7.7vw,58px)}.hero-copy{padding:0 0 38px}.system-plate{margin-right:6px}.hero-subtitle{font-size:21px;max-width:520px}.system-dialog{padding:16px 12px;width:calc(100% - 20px)}.system-dialog-heading h2{font-size:18px}.opening-caption{min-height:0}}
+@media(max-width:420px){.topbar{padding-inline:20px}.top-actions{gap:10px}.review-button{font-size:10px;max-width:125px}.essay-header{padding-inline:20px}.opening-controls{gap:18px}.opening-scrubber{width:100%;justify-content:space-between}.opening-scrubber input{flex:1;max-width:210px}}
+@media(prefers-reduced-motion:reduce){.notebook-topic,.topic-miniature,.opening-buttons button{transition:none}.opening-buttons button:hover{transform:none}}

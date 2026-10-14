@@ -1,0 +1,43 @@
+import {p,math as m,eq,section,cite,demo,table,note} from './essay-helpers.mjs';
+const further=(title,...body)=>'<details class="essay-further"><summary>'+title+'</summary>'+body.join('')+'</details>';
+import {releaseComparison} from './static-figures.mjs';
+export const evidenceEssays={
+  'frontier-release':{refs:['cards','evaluation','agentEvals','llama'],sections:[
+    section('claim','The experiment behind the score',
+      p("Consider a model release reporting success on more tasks than its predecessor. We would like to know whether the new model can do work the old one could not. The score is our evidence, so we must examine how it was obtained: which tasks were attempted and what counted as completing them."),
+      p("The tested system may include a prompt, tools, a harness, retries, and a rule for selecting an answer. If any of these changed, the result reflects that change as well as the model. <a href=\"https://arxiv.org/abs/1810.03993\">Model cards</a> and <a href=\"https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents\">agent-evaluation accounts</a> help recover the conditions behind a reported number.")),
+    section('comparison','What does the budget allow?',
+      p("Suppose system A succeeds on seven of ten tasks with one attempt per task. System B succeeds on five first attempts, but finds a correct answer on nine tasks when given four attempts and a perfect selector. Which number should we compare with A’s seven? The answer depends on whether our question permits the larger budget and the selector."),
+      releaseComparison(),
+      p("If we allow one attempt, A solved seven tasks and B solved five. That is the comparison the example supports at this budget. Giving B four attempts changes the experiment: on nine tasks, at least one candidate is correct. To turn those candidates into nine successful answers, we would also need a method that recognizes each correct one. Merely asking B four times does not provide that method. We would have to give A the same resources before comparing the larger-budget systems."),
+      p('Prompting, tool access, grading, and allowed interaction can similarly change a task’s difficulty. For agent tasks, completion is an event in an environment, not simply a matching string. '+cite('evaluation','Task-horizon evaluations')+' supply one way to specify a task family, success criterion, and reference difficulty.')),
+    section('uncertainty','How much evidence does the test contain?',
+      p('Suppose a model succeeds on eighty of a hundred tasks. We report 80%, but another hundred tasks could give a different number. A benchmark samples some of the problems we might ask the model to solve. Variation in that sample can change the reported result even when the model and its procedure stay fixed.'),
+      p('The number of tasks therefore matters. Eight successes out of ten and eighty out of a hundred both give 80%, but the larger sample generally supplies a more precise estimate under comparable sampling conditions. A difference of one or two successes on a small test can be a poor basis for a sweeping claim.'),
+      further('A simple calculation of sampling variation',
+        p('For independently sampled tasks with common success probability '+m('p')+', let '+m('Y_i')+' be 1 for success and 0 for failure. The measured rate is their average, '+m('\\widehat p=n^{-1}\\sum_iY_i')+'. Independence lets us add their variances:'),
+        eq('\\operatorname{Var}(\\widehat p)=\\frac{p(1-p)}{n}.'),
+        p('At '+m('p=0.8')+' and '+m('n=100')+', this gives standard deviation 0.04, or four percentage points. The calculation assumes independent tasks from the stated distribution. Shared templates and dependencies can reduce how much independent information the test contains.')),
+      p('A comparison on the same tasks can also tell us which tasks improved and which regressed. That is more informative than treating the two totals as unrelated samples. A careful report identifies the task set, the experimental unit, and how uncertainty was estimated.')),
+    section('interpretation','What the report lets us conclude',
+      p('I would read the central claim first, then look for its supporting conditions, omissions, and alternative explanations. The '+cite('llama','Llama 3 report')+', for example, separates pre-trained and post-trained evaluations and supplies different task protocols. Keeping those sections distinct prevents a change in protocol from becoming an unexplained change in “intelligence.”'),
+      p("The experiment can support a useful claim under its recorded conditions. If we intend to use a different prompt, budget, or environment, the claim may need testing there too. There is another complication when we choose the conditions after seeing which ones give a high score."))
+  ]},
+  benchmaxxing:{refs:['agentEvals','livebench','livecodebench'],sections:[
+    section('purpose','What the score is meant to stand for',
+      p("Consider a benchmark of coding problems. We care about its score because we hope a model that does well there will also help with unfamiliar code. The benchmark is a manageable sample of that much larger ambition. Improving the score is useful to the extent that the improvement carries over."),
+      p("By <strong>benchmaxxing</strong>, I mean development that hill-climbs familiar benchmark scores while doing little to improve performance beyond them. A creator can try many training changes, prompts, or harness configurations, keep those that raise the advertised score, and repeat. The test gradually becomes a target around which the system is built.")),
+    section('feedback','When the test becomes part of development',
+      p("Suppose a coding model is repeatedly evaluated on the same collection of short, self-contained problems. Its developers improve the formatting of answers, adapt their procedure to the grader, and retain training changes that solve more of those problems. Some of this work may improve coding generally. Some may chiefly exploit regularities in that collection."),
+      p("Now ask the model to modify an unfamiliar repository with incomplete documentation and requirements spread across several files. A high score on the familiar test does not establish competence at this work. We need evidence that the gain survives the change of setting."),
+      p("Directly training on test answers is one form of contamination. Repeated development guided by the score can specialize a system without copying those answers. Neither mechanism should be inferred solely from an impressive result. The relevant question is how the evaluation influenced development, and what independent evidence remains."),
+      note('A very accommodating examination','If I write the exam after seeing my own answers, my earlier difficulties disappear with remarkable speed.')),
+    section('generalization','Testing beyond the familiar collection',
+      p("Hold back tasks that did not guide development, then evaluate the finished procedure on them. New tasks should still represent the capability we care about: replacing coding with an unrelated puzzle would test something else. We want unfamiliar instances of useful work."),
+      p(cite('livebench','LiveBench')+' updates questions using recent material to limit contamination. '+cite('livecodebench','LiveCodeBench')+' continually collects new programming problems and records their time ranges. Freshness helps separate performance on familiar material from performance on later examples; it does not make every possible source of contamination or benchmark-specific tuning disappear.'),
+      p("The harness and budget should also match the claim. A model using retries and tools may genuinely be a better system under those conditions. Report them, keep them comparable, and test whether the resulting advantage persists on independent tasks.")),
+    section('practice','Reading the advertised result',
+      p("A large benchmark gain is a reason to investigate a model, rather than a guarantee that it will work well in our application. Look for fresh evaluations, reproducible conditions, and examples that resemble the work we intend to give it. "+cite('agentEvals','Agent-evaluation guidance')+" describes why graders, harnesses, and executed trajectories matter alongside the final score."),
+      p("For my own choice of a coding assistant, I would try a few representative tasks in a real project and inspect the resulting changes. If a leaderboard gain repeatedly fails to appear there, the score may still describe its test accurately. It has not supplied the practical improvement I was hoping it would predict."))
+  ]}
+};
