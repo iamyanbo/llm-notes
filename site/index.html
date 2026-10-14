@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <title>Yanbo - LLM's</title>
+  <meta name="color-scheme" content="light">
+  <title>Yanbo · LLM Notes</title>
   <meta name="description" content="Interactive mathematical essays on attention, transformers, and the methods used to train and run language models, by Yanbo.">
   <link rel="canonical" href="{{SITE_URL}}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,19 +18,22 @@
     <header class="masthead"><a class="author" href="{{PROFILE_URL}}">Yanbo</a><nav aria-label="Author links">{{PORTFOLIO_LINK}}<a href="{{REPOSITORY_URL}}">Source code ↗</a></nav></header>
     <main>
       <header class="introduction">
-        <p class="eyebrow">Interactive essays</p>
-        <h1>Yanbo - LLM's</h1>
+        <div class="intro-copy"><p class="eyebrow">Interactive essays by Yanbo</p>
+        <h1>LLM <em>Notes.</em></h1>
         <p class="lede">Consider a sentence whose words we know, yet whose meaning changes when we exchange their positions. What must a machine represent to keep that distinction?</p>
         <p>These essays begin with language and grammatical structure, then build towards attention, transformers, and the methods used to train and run them. The diagrams let us follow the numbers as they move through each construction.</p>
+        <a class="begin-link" href="foundations/">Begin with Foundations <span aria-hidden="true">↗</span></a></div>
+        <figure class="intro-illustration"><img src="foundations/assets/chasing-roles.png" width="2172" height="724" alt="A golden retriever chases a tabby cat; in the second scene, the cat chases the dog."><figcaption>The same words. A different chase.</figcaption><div class="sentence-pair" aria-hidden="true"><p>The <strong>dog</strong> chased the <strong>cat</strong>.</p><p>The <strong>cat</strong> chased the <strong>dog</strong>.</p></div></figure>
       </header>
       <section class="essays" id="essays" aria-label="Essays">
+        <div class="index-heading"><p class="eyebrow">The collection</p><p>Three ways into the subject.</p></div>
         <article class="essay-card">
           <div class="card-copy"><p class="eyebrow">01 · Foundations</p><h2><a href="foundations/">Understanding attention and transformers</a></h2><p>From words and tokens to representations, attention, and a model that generates a sequence. Definitions, worked examples, and proofs accompany the moving calculations.</p><a class="read-link" href="foundations/">Read Foundations <span aria-hidden="true">→</span></a></div>
-          <figure><img src="foundations/assets/chasing-roles.png" width="2172" height="724" alt="A golden retriever chases a tabby cat; in the second scene, the cat chases the dog."><figcaption>The same words. A different chase.</figcaption></figure>
+          <aside class="chapter-preview" aria-label="Foundations reading path"><span>Follow the construction</span><ol><li>Language &amp; structure</li><li>Tokens &amp; representations</li><li>Attention &amp; transformers</li><li>Training &amp; generation</li></ol></aside>
         </article>
         <article class="essay-card companion">
           <div class="card-copy"><p class="eyebrow">02 · Transformers in practice</p><h2><a href="transformers/">Building, training, and running the model</a></h2><p>RoPE, attention variants, mixture of experts, and multimodal inputs; pre-training, post-training, and LoRA; caching, quantization, chain of thought, and speculative decoding.</p><a class="read-link" href="transformers/">Read Transformers in Practice <span aria-hidden="true">→</span></a></div>
-          <figure><img src="transformers/assets/dog-cat-hiding-boxes.png" width="1774" height="887" loading="lazy" alt="The same golden retriever and tabby peek out from cardboard boxes."><figcaption>A few more constructions to unpack.</figcaption></figure>
+          <figure class="companion-illustration"><img src="transformers/assets/dog-cat-hiding-boxes.png" width="1774" height="887" loading="lazy" alt="The same golden retriever and tabby peek out from cardboard boxes."><figcaption>A few more constructions to unpack.</figcaption></figure>
         </article>
         <article class="essay-card miscellaneous-card">
           <div class="card-copy"><p class="eyebrow">03 · Miscellaneous Topics</p><h2><a href="miscellaneous/">Further questions about AI</a></h2><p>GPU hardware, CUDA, VRAM, scaling laws, inference systems, frontier releases, company agents, ethics, and safety. Essays following the model into the machines, experiments, and decisions around it.</p><a class="read-link" href="miscellaneous/">Read Miscellaneous Topics <span aria-hidden="true">→</span></a></div>
