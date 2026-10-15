@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Yanbo · LLM Notes</title>
-  <meta name="description" content="Interactive mathematical essays on attention, transformers, and the methods used to train and run language models, by Yanbo.">
+  <meta name="description" content="Yanbo’s essays on the mathematics of language models, changes to the transformer, and the hardware, experiments, and decisions involved in using them.">
   <link rel="canonical" href="{{SITE_URL}}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,23 +20,22 @@
       <header class="introduction">
         <div class="intro-copy"><p class="eyebrow">Interactive essays by Yanbo</p>
         <h1>LLM <em>Notes.</em></h1>
-        <p class="lede">Consider a sentence whose words we know, yet whose meaning changes when we exchange their positions. What must a machine represent to keep that distinction?</p>
-        <p>These essays begin with language and grammatical structure, then build towards attention, transformers, and the methods used to train and run them. The diagrams let us follow the numbers as they move through each construction.</p>
-        <a class="begin-link" href="foundations/">Begin with Foundations <span aria-hidden="true">↗</span></a></div>
-        <figure class="intro-illustration"><img src="foundations/assets/chasing-roles.png" width="2172" height="724" alt="A golden retriever chases a tabby cat; in the second scene, the cat chases the dog."><figcaption>The same words. A different chase.</figcaption><div class="sentence-pair" aria-hidden="true"><p>The <strong>dog</strong> chased the <strong>cat</strong>.</p><p>The <strong>cat</strong> chased the <strong>dog</strong>.</p></div></figure>
+        <p class="lede">The purpose of these essays is to understand how language models compute and learn, and what is involved in putting those computations to use.</p>
+        <p><a href="foundations/">Foundations</a> begins with language and develops attention and the transformer. <a href="transformers/">Transformers in Practice</a> examines changes to that construction, how its parameters are learned, and how generation is carried out. <a href="miscellaneous/">Miscellaneous Topics</a> considers the hardware, experiments, and decisions surrounding these models.</p>
+        <a class="begin-link" href="#essays">Read the essays <span aria-hidden="true">↓</span></a></div>
       </header>
       <section class="essays" id="essays" aria-label="Essays">
-        <div class="index-heading"><p class="eyebrow">The collection</p><p>Three ways into the subject.</p></div>
+        <div class="index-heading"><p class="eyebrow">The essays</p></div>
         <article class="essay-card">
-          <div class="card-copy"><p class="eyebrow">01 · Foundations</p><h2><a href="foundations/">Understanding attention and transformers</a></h2><p>From words and tokens to representations, attention, and a model that generates a sequence. Definitions, worked examples, and proofs accompany the moving calculations.</p><a class="read-link" href="foundations/">Read Foundations <span aria-hidden="true">→</span></a></div>
-          <aside class="chapter-preview" aria-label="Foundations reading path"><span>Follow the construction</span><ol><li>Language &amp; structure</li><li>Tokens &amp; representations</li><li>Attention &amp; transformers</li><li>Training &amp; generation</li></ol></aside>
+          <div class="card-copy"><p class="eyebrow">01 · Foundations</p><h2><a href="foundations/">Understanding attention and transformers</a></h2><p>A reader can distinguish who acts and who is affected in a sentence, even when the same words occur in a different arrangement. A model needs a numerical representation in which those distinctions remain available. Beginning with this problem, the notes develop attention, the transformer, and the calculations used to train it and generate text.</p><a class="read-link" href="foundations/">Read Foundations <span aria-hidden="true">→</span></a></div>
+          <figure class="intro-illustration"><img src="foundations/assets/chasing-roles.png" width="2172" height="724" loading="lazy" alt="A golden retriever chases a tabby cat; in the second scene, the cat chases the dog."><div class="sentence-pair"><p>The <strong>dog</strong> chased the <strong>cat</strong>.</p><p>The <strong>cat</strong> chased the <strong>dog</strong>.</p></div></figure>
         </article>
         <article class="essay-card companion">
-          <div class="card-copy"><p class="eyebrow">02 · Transformers in practice</p><h2><a href="transformers/">Building, training, and running the model</a></h2><p>RoPE, attention variants, mixture of experts, and multimodal inputs; pre-training, post-training, and LoRA; caching, quantization, chain of thought, and speculative decoding.</p><a class="read-link" href="transformers/">Read Transformers in Practice <span aria-hidden="true">→</span></a></div>
-          <figure class="companion-illustration"><img src="transformers/assets/dog-cat-hiding-boxes.png" width="1774" height="887" loading="lazy" alt="The same golden retriever and tabby peek out from cardboard boxes."><figcaption>A few more constructions to unpack.</figcaption></figure>
+          <div class="card-copy"><p class="eyebrow">02 · Architecture, learning, and generation</p><h2><a href="transformers/">Transformers in Practice</a></h2><p>The transformer in Foundations leaves many choices open: how position enters a comparison, how parameters are learned or adapted, and how generation is carried out on a machine. Each essay takes one of these questions and examines what a proposed construction changes, what it saves, and what it gives up. The essays can be read separately.</p><a class="read-link" href="transformers/">Read Transformers in Practice <span aria-hidden="true">→</span></a></div>
+          <figure class="companion-illustration"><img src="transformers/assets/dog-cat-hiding-boxes.png" width="1774" height="887" loading="lazy" alt="The same golden retriever and tabby peek out from cardboard boxes."></figure>
         </article>
         <article class="essay-card miscellaneous-card">
-          <div class="card-copy"><p class="eyebrow">03 · Miscellaneous Topics</p><h2><a href="miscellaneous/">Further questions about AI</a></h2><p>GPU hardware, CUDA, VRAM, scaling laws, inference systems, frontier releases, company agents, ethics, and safety. Essays following the model into the machines, experiments, and decisions around it.</p><a class="read-link" href="miscellaneous/">Read Miscellaneous Topics <span aria-hidden="true">→</span></a></div>
+          <div class="card-copy"><p class="eyebrow">03 · Hardware, experiments, and use</p><h2><a href="miscellaneous/">Miscellaneous Topics</a></h2><p>A matrix product in a training equation does not tell us how long the calculation will take or which machines we can afford to run it on. These essays examine the physical resources behind a model’s computation, the evidence used to judge its behavior, and the decisions involved in giving it tools and putting it to use. They need not be read in order.</p><a class="read-link" href="miscellaneous/">Read Miscellaneous Topics <span aria-hidden="true">→</span></a></div>
           <aside class="collection-preview" aria-label="Topic groups"><ol><li>Hardware</li><li>Compute and learning</li><li>Inference systems</li><li>Evaluating claims</li><li>Harnesses and agents</li><li>Ethics and safety</li></ol></aside>
         </article>
       </section>
