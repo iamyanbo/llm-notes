@@ -1,0 +1,402 @@
+[
+  {
+    "day": 1,
+    "title": "Experts and routing",
+    "segments": [
+      {
+        "chapter": "experts",
+        "sections": [
+          "capacity",
+          "expert-function",
+          "clamping",
+          "mixture",
+          "selection-weight",
+          "hash-routing",
+          "balancing",
+          "mtp-purpose"
+        ]
+      }
+    ],
+    "finish": "One expert calculation, a routed mixture and the purpose of the auxiliary prediction objective.",
+    "family": "DeepSeek V4"
+  },
+  {
+    "day": 2,
+    "title": "Residual streams and mHC",
+    "segments": [
+      {
+        "chapter": "residuals",
+        "sections": [
+          "wider-stream",
+          "hyper-connections",
+          "stochastic",
+          "sinkhorn",
+          "coefficient-map",
+          "whole-block"
+        ]
+      }
+    ],
+    "finish": "Two successive residual updates and their coefficient predictor, related to V4's four streams. Stop before Single-Pass mHC.",
+    "family": "DeepSeek V4"
+  },
+  {
+    "day": 3,
+    "title": "CSA and its compressed memory",
+    "segments": [
+      {
+        "chapter": "compression",
+        "sections": [
+          "why-compress",
+          "projection-order",
+          "weighted-block",
+          "v4-overlap",
+          "completion",
+          "pool-code"
+        ]
+      }
+    ],
+    "finish": "Explain CSA's two memory paths and selection step, then trace the pooled vector (4, 3.5), entry 1's sources and its first permitted query.",
+    "family": "DeepSeek V4"
+  },
+  {
+    "day": 4,
+    "title": "Lightning Indexer: queries and addresses",
+    "segments": [
+      {
+        "chapter": "attention",
+        "sections": [
+          "query-construction",
+          "two-comparisons"
+        ]
+      }
+    ],
+    "finish": "Addresses 0 and 1, with their scores and completion checks. Main attention begins tomorrow.",
+    "family": "DeepSeek V4"
+  },
+  {
+    "day": 5,
+    "title": "Shared-KV attention and RoPE",
+    "segments": [
+      {
+        "chapter": "attention",
+        "sections": [
+          "local-global",
+          "sink",
+          "attention-reference"
+        ]
+      },
+      {
+        "chapter": "positions",
+        "sections": [
+          "rotating",
+          "shared-vector",
+          "frequency-schedule"
+        ]
+      }
+    ],
+    "finish": "The shared-KV output (3 log 3 / 8, 4), then the inverse rotation of its rotary coordinates.",
+    "family": "DeepSeek V4"
+  },
+  {
+    "day": 6,
+    "title": "Assemble DeepSeek V4",
+    "segments": [
+      {
+        "chapter": "positions",
+        "sections": [
+          "grouping",
+          "position-tests"
+        ]
+      },
+      {
+        "chapter": "v4-forward",
+        "sections": [
+          "hca",
+          "architecture",
+          "embedding",
+          "attention-update",
+          "entry-transforms",
+          "expert-update",
+          "layer-schedule",
+          "readout",
+          "auxiliary-branch",
+          "generation"
+        ]
+      },
+      {
+        "chapter": "prediction",
+        "sections": [
+          "mtp",
+          "v4-auxiliary-readout"
+        ]
+      }
+    ],
+    "finish": "The connected V4 backbone, computed readout gains and three-ID probabilities, plus MTP fusion and its shifted auxiliary target.",
+    "family": "DeepSeek V4"
+  },
+  {
+    "day": 7,
+    "title": "Muon and a complete trace",
+    "segments": [
+      {
+        "chapter": "training",
+        "sections": [
+          "muon"
+        ]
+      },
+      {
+        "chapter": "training",
+        "sections": [
+          "optimizer-groups"
+        ]
+      },
+      {
+        "chapter": "reference",
+        "sections": [
+          "model-boundary",
+          "forward-code",
+          "block-code",
+          "attention-code",
+          "running",
+          "correspondence"
+        ]
+      }
+    ],
+    "finish": "The gradient-to-Muon-to-parameter calculation and an annotated V4 miniature forward trace, with its execution boundary explicit.",
+    "family": "DeepSeek V4"
+  },
+  {
+    "day": 8,
+    "title": "V4.1: change the memory dependency",
+    "segments": [
+      {
+        "chapter": "residuals",
+        "sections": [
+          "single-pass"
+        ]
+      },
+      {
+        "chapter": "ced",
+        "sections": [
+          "input-heavy",
+          "source",
+          "ced-two-inputs"
+        ]
+      }
+    ],
+    "finish": "Trace the carried input mixture, then separate current decoder queries/local KV from encoder-sourced global memory.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 9,
+    "title": "CSA2: share memory, reconsider addresses",
+    "segments": [
+      {
+        "chapter": "reuse",
+        "sections": [
+          "owners",
+          "schedule",
+          "full-layer-calculation",
+          "shared-index-key",
+          "hierarchy",
+          "sparse-address-layout",
+          "reuse-tests"
+        ]
+      }
+    ],
+    "finish": "Identify the cache owner and selection source, then trace a candidate restriction before Top-K.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 10,
+    "title": "Replay: rebuild the state that was omitted",
+    "segments": [
+      {
+        "chapter": "ced",
+        "sections": [
+          "local-cost",
+          "ced-reference",
+          "ced-reference-boundary",
+          "ced-replay-boundary"
+        ]
+      },
+      {
+        "chapter": "precision",
+        "sections": [
+          "replay"
+        ]
+      }
+    ],
+    "finish": "Draw the missing local dependencies at a replay boundary and distinguish encoder and decoder cache writes.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 11,
+    "title": "Engram: retrieve a pattern, gate it with context",
+    "segments": [
+      {
+        "chapter": "engram",
+        "sections": [
+          "addressing",
+          "retrieved",
+          "engram-complete-update",
+          "compressed-token-map",
+          "history",
+          "released-hash",
+          "memory-tests"
+        ]
+      }
+    ],
+    "finish": "Follow one suffix through lookup, projection and gated addition; then reproduce its address and chunk history.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 12,
+    "title": "Vision: from measured pixels to language rows",
+    "segments": [
+      {
+        "chapter": "vision",
+        "sections": [
+          "patches",
+          "patch-order",
+          "vit-layer",
+          "vision-rotary-coordinates",
+          "unshuffle",
+          "visual-packing-interface",
+          "merge",
+          "modality"
+        ]
+      }
+    ],
+    "finish": "Trace a pixel contrast, spatial patch features and channel-major unshuffle into a reserved image span.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 13,
+    "title": "Precision: retain codes and their units",
+    "segments": [
+      {
+        "chapter": "precision",
+        "sections": [
+          "representable",
+          "scale-calculation",
+          "packed-layout",
+          "890",
+          "quantization-position",
+          "v4-cache-precision"
+        ]
+      }
+    ],
+    "finish": "Reconstruct an FP4 group, count values plus scales, and derive the ideal global-cache payload.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 14,
+    "title": "DSpark: do the heavy draft work once",
+    "segments": [
+      {
+        "chapter": "prediction",
+        "sections": [
+          "dspark",
+          "dspark-fusion",
+          "dspark-block",
+          "dspark-recurrent-head"
+        ]
+      }
+    ],
+    "finish": "Keep the heavy slot features fixed while a sampled predecessor changes the next proposal distribution.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 15,
+    "title": "Verification: decide what becomes history",
+    "segments": [
+      {
+        "chapter": "prediction",
+        "sections": [
+          "verification",
+          "verification-state",
+          "schedule"
+        ]
+      }
+    ],
+    "finish": "Recover the target probability mass and commit only the accepted prefix with consistent request state.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 16,
+    "title": "Assemble the V4.1 computation",
+    "segments": [
+      {
+        "chapter": "v41-forward",
+        "sections": [
+          "input",
+          "single-pass-block",
+          "attention-contract",
+          "prompt-and-decode",
+          "head-and-draft",
+          "connected-architecture",
+          "v41-trace"
+        ]
+      }
+    ],
+    "finish": "Follow the complete V4.1 path and compare its dependencies with the recorded six-layer miniature.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 17,
+    "title": "Training: which parameters receive which update?",
+    "segments": [
+      {
+        "chapter": "training",
+        "sections": [
+          "objective",
+          "headwise-muon",
+          "balanced-updates",
+          "table-update-equations",
+          "posttraining",
+          "training-stage-dependencies",
+          "training-tests"
+        ]
+      }
+    ],
+    "finish": "Relate the loss gradient, head-wise matrix update, balanced table update and staged training dependencies.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 18,
+    "title": "Systems: continue the right request",
+    "segments": [
+      {
+        "chapter": "systems",
+        "sections": [
+          "state-contract",
+          "small-config",
+          "parallelism",
+          "timing",
+          "reference-production"
+        ]
+      }
+    ],
+    "finish": "Account for unfinished groups, interleaved requests and tentative state before interpreting timings.",
+    "family": "V4.1 and implementation"
+  },
+  {
+    "day": 19,
+    "title": "Experiments: separate a check from a claim",
+    "segments": [
+      {
+        "chapter": "investigations",
+        "sections": [
+          "first-run",
+          "precision-study",
+          "replay-study",
+          "index-cost",
+          "record"
+        ]
+      }
+    ],
+    "finish": "Read the recorded evidence, then specify a controlled precision, replay or index-cost comparison.",
+    "family": "V4.1 and implementation"
+  }
+]

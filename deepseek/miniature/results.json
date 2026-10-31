@@ -1,0 +1,738 @@
+{
+  "schema": 1,
+  "seed": 20261016,
+  "threads": 1,
+  "device": "cpu",
+  "python": "3.13.13",
+  "pytorch": "2.12.0+cpu",
+  "purpose": "Executable text-backbone derivation with random weights. No trained quality, latency, or VRAM claim.",
+  "tests": {
+    "run": 19,
+    "passed": 19,
+    "errors": 0,
+    "failures": 0
+  },
+  "implementation_sha256": {
+    "model.py": "d6f244770c1390304450b068cded0a3ed6a93bdcab707d904049efd969990462",
+    "test_model.py": "91d42dcd32bf49d513cb93bfda1fd833f7873437a950e12e974e0aa71717a3fd",
+    "run.py": "dd98dcf258c31daf572e80cfc284fe07b78d27f4d2ce3c2b307b85af8ee06f0e"
+  },
+  "reference_sources": [
+    {
+      "model": "DeepSeek-V4-Flash",
+      "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+      "path": "inference/config.json",
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/resolve/60d8d70770c6776ff598c94bb586a859a38244f1/inference/config.json",
+      "sha256": "6cc6f816ca73a8d38750194e330398e4f6955b4b45f674f7d29c96da14ccb733",
+      "bytes": 991
+    },
+    {
+      "model": "DeepSeek-V4-Flash",
+      "revision": "60d8d70770c6776ff598c94bb586a859a38244f1",
+      "path": "inference/model.py",
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/resolve/60d8d70770c6776ff598c94bb586a859a38244f1/inference/model.py",
+      "sha256": "ce962f1face79d4f633d36436576214057a7e11443c9789935e1deb5c6cd1d71",
+      "bytes": 38632
+    },
+    {
+      "model": "DeepSeek-V4.1-Flash",
+      "revision": "314113f8a7dadb388215396ba5fbee2c610a04d6",
+      "path": "inference/config.json",
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/314113f8a7dadb388215396ba5fbee2c610a04d6/inference/config.json",
+      "sha256": "2e84f45cf1dac8c7fcbb200e96667d4b913275690668ed496f24c7747207a809",
+      "bytes": 1982
+    },
+    {
+      "model": "DeepSeek-V4.1-Flash",
+      "revision": "314113f8a7dadb388215396ba5fbee2c610a04d6",
+      "path": "inference/model.py",
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/resolve/314113f8a7dadb388215396ba5fbee2c610a04d6/inference/model.py",
+      "sha256": "e5decd76fe70fd56ef2f10124d245c6f64fb6a0003cc9068a1d3182a168b8d2d",
+      "bytes": 61669
+    }
+  ],
+  "models": {
+    "v4": {
+      "config": {
+        "family": "v4",
+        "vocab": 32,
+        "dim": 16,
+        "heads": 4,
+        "head_dim": 8,
+        "rotary": 4,
+        "q_rank": 8,
+        "groups": 2,
+        "o_rank": 4,
+        "experts": 4,
+        "active": 2,
+        "expert_width": 24,
+        "streams": 4,
+        "window": 4,
+        "global_topk": 2,
+        "index_heads": 2,
+        "index_dim": 8,
+        "sinkhorn_steps": 30,
+        "eps": 1e-06,
+        "route_scale": 1.5,
+        "ratios": [
+          0,
+          2,
+          4,
+          2,
+          4,
+          2
+        ],
+        "modes": [
+          "local",
+          "full",
+          "full",
+          "full",
+          "full",
+          "full"
+        ],
+        "encoder_layers": 3,
+        "hash_layers": 1,
+        "candidate_block": 2,
+        "candidate_blocks": 2
+      },
+      "parameter_count": 64265,
+      "dtype": "float64",
+      "input_ids": [
+        [
+          1,
+          3,
+          5,
+          7,
+          9,
+          11,
+          13,
+          15
+        ]
+      ],
+      "trace": {
+        "embedding_shape": [
+          1,
+          8,
+          16
+        ],
+        "residual_shape": [
+          1,
+          8,
+          4,
+          16
+        ],
+        "reduced_shape": [
+          1,
+          8,
+          16
+        ],
+        "logits_shape": [
+          1,
+          8,
+          32
+        ],
+        "layers": [
+          {
+            "layer": 0,
+            "mode": "local",
+            "ratio": 0,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              0,
+              8
+            ],
+            "global_source": null,
+            "selection_source": null,
+            "last_selected": [],
+            "output_first4": [
+              -0.3420982246707873,
+              -0.01592106021775616,
+              0.2203329536484904,
+              0.19012973928409724
+            ]
+          },
+          {
+            "layer": 1,
+            "mode": "full",
+            "ratio": 2,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              4,
+              8
+            ],
+            "global_source": 1,
+            "selection_source": 1,
+            "last_selected": [
+              0,
+              2
+            ],
+            "output_first4": [
+              0.043280133947558946,
+              0.5386870549780902,
+              0.21261724306231686,
+              0.03740878440427524
+            ]
+          },
+          {
+            "layer": 2,
+            "mode": "full",
+            "ratio": 4,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              2,
+              8
+            ],
+            "global_source": 2,
+            "selection_source": 2,
+            "last_selected": [
+              0,
+              1
+            ],
+            "output_first4": [
+              0.0061863786421636575,
+              0.5028670659274896,
+              -0.3344687310097552,
+              0.2185441237238617
+            ]
+          },
+          {
+            "layer": 3,
+            "mode": "full",
+            "ratio": 2,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              4,
+              8
+            ],
+            "global_source": 3,
+            "selection_source": 3,
+            "last_selected": [
+              0,
+              3
+            ],
+            "output_first4": [
+              -0.34687604124264776,
+              0.5563171688842229,
+              0.14097395280088074,
+              -0.17625029697199726
+            ]
+          },
+          {
+            "layer": 4,
+            "mode": "full",
+            "ratio": 4,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              2,
+              8
+            ],
+            "global_source": 4,
+            "selection_source": 4,
+            "last_selected": [
+              0,
+              1
+            ],
+            "output_first4": [
+              -0.251731151605191,
+              -0.2874258861760586,
+              -0.35038206454836734,
+              0.009414088575233895
+            ]
+          },
+          {
+            "layer": 5,
+            "mode": "full",
+            "ratio": 2,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              4,
+              8
+            ],
+            "global_source": 5,
+            "selection_source": 5,
+            "last_selected": [
+              1,
+              2
+            ],
+            "output_first4": [
+              0.18395462590512152,
+              0.3045074748154696,
+              -0.1031953927439656,
+              0.2885526693538221
+            ]
+          }
+        ],
+        "local_owners": 6,
+        "final_first4": [
+          -0.636970159790818,
+          0.3187384142779408,
+          0.09761939730940081,
+          -0.24922588390400727
+        ]
+      },
+      "last_logits": [
+        -0.636970159790818,
+        0.3187384142779408,
+        0.09761939730940081,
+        -0.24922588390400727,
+        -0.12105594740108774,
+        -1.134434211388582,
+        -0.05824917618259342,
+        -0.8294493678013947,
+        0.3525892871098097,
+        0.5959318324744854,
+        0.8768461614516648,
+        0.18944014101804,
+        -0.5190220825052858,
+        -0.4251641896468073,
+        -0.23171439552049297,
+        0.6655019029758487,
+        -0.1746269953199049,
+        -0.1463207103752258,
+        -0.5680585564842152,
+        0.3064442843177737,
+        0.16884648584131212,
+        0.012646737338719554,
+        0.9249468551693336,
+        -0.8086888667613031,
+        1.6570091782379717,
+        -0.27590283762036705,
+        0.28104066626155677,
+        -0.6115444661389873,
+        -0.18182888372438866,
+        0.7069638011139219,
+        0.640912041841649,
+        -0.3611081122024451
+      ],
+      "greedy_ids": [
+        [
+          1,
+          3,
+          5,
+          7,
+          29,
+          25,
+          24,
+          8
+        ]
+      ],
+      "checks": {
+        "future_perturbation_max_abs": 5.551115123125783e-16,
+        "every_prefix_max_abs": 8.881784197001252e-16,
+        "chunked_prefix_recomputation_max_abs": 6.661338147750939e-16,
+        "next_token_cross_entropy_random_weights": 3.348188942136203,
+        "embedding_gradient_l2": 0.350539264100434,
+        "all_present_gradients_finite": true,
+        "parameters_with_gradients": 216
+      },
+      "generation_method": "greedy argmax, full-prefix recomputation each step"
+    },
+    "v41": {
+      "config": {
+        "family": "v41",
+        "vocab": 32,
+        "dim": 16,
+        "heads": 4,
+        "head_dim": 8,
+        "rotary": 4,
+        "q_rank": 8,
+        "groups": 2,
+        "o_rank": 4,
+        "experts": 4,
+        "active": 2,
+        "expert_width": 24,
+        "streams": 4,
+        "window": 4,
+        "global_topk": 2,
+        "index_heads": 2,
+        "index_dim": 8,
+        "sinkhorn_steps": 30,
+        "eps": 1e-06,
+        "route_scale": 1.5,
+        "ratios": [
+          0,
+          2,
+          2,
+          1,
+          1,
+          1
+        ],
+        "modes": [
+          "local",
+          "full",
+          "reuse",
+          "full",
+          "reindex",
+          "reuse"
+        ],
+        "encoder_layers": 3,
+        "hash_layers": 0,
+        "candidate_block": 2,
+        "candidate_blocks": 2
+      },
+      "parameter_count": 60708,
+      "dtype": "float64",
+      "input_ids": [
+        [
+          1,
+          3,
+          5,
+          7,
+          9,
+          11,
+          13,
+          15
+        ]
+      ],
+      "trace": {
+        "embedding_shape": [
+          1,
+          8,
+          16
+        ],
+        "residual_shape": [
+          1,
+          8,
+          4,
+          16
+        ],
+        "reduced_shape": [
+          1,
+          8,
+          16
+        ],
+        "logits_shape": [
+          1,
+          8,
+          32
+        ],
+        "layers": [
+          {
+            "layer": 0,
+            "mode": "local",
+            "ratio": 0,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              0,
+              8
+            ],
+            "global_source": null,
+            "selection_source": null,
+            "last_selected": [],
+            "output_first4": [
+              -0.31122031658087784,
+              0.034246224453724,
+              0.19327637162957542,
+              0.09190466033950749
+            ]
+          },
+          {
+            "layer": 1,
+            "mode": "full",
+            "ratio": 2,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              4,
+              8
+            ],
+            "global_source": 1,
+            "selection_source": 1,
+            "last_selected": [
+              1,
+              2
+            ],
+            "output_first4": [
+              0.03112106143306019,
+              0.14115281505714125,
+              0.05172203986351469,
+              0.15241051531072333
+            ]
+          },
+          {
+            "layer": 2,
+            "mode": "reuse",
+            "ratio": 2,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              4,
+              8
+            ],
+            "global_source": 1,
+            "selection_source": 1,
+            "last_selected": [
+              1,
+              2
+            ],
+            "output_first4": [
+              -0.2537933187447497,
+              0.01942251264036776,
+              0.2303611635526733,
+              -0.08561273437690115
+            ]
+          },
+          {
+            "layer": 3,
+            "mode": "full",
+            "ratio": 1,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_source": 3,
+            "selection_source": 3,
+            "last_selected": [
+              5,
+              7
+            ],
+            "output_first4": [
+              -0.027373910698140724,
+              0.20652419972540495,
+              -0.16157444976404284,
+              -0.2184983856914318
+            ]
+          },
+          {
+            "layer": 4,
+            "mode": "reindex",
+            "ratio": 1,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_source": 3,
+            "selection_source": 4,
+            "last_selected": [
+              4,
+              7
+            ],
+            "output_first4": [
+              -0.2843733255375904,
+              -0.27790904670222677,
+              -0.19142671992823548,
+              0.39575002395831005
+            ]
+          },
+          {
+            "layer": 5,
+            "mode": "reuse",
+            "ratio": 1,
+            "query_shape": [
+              1,
+              8,
+              4,
+              8
+            ],
+            "local_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_shape": [
+              1,
+              8,
+              8
+            ],
+            "global_source": 3,
+            "selection_source": 4,
+            "last_selected": [
+              4,
+              7
+            ],
+            "output_first4": [
+              0.03810430960423227,
+              -0.009459612768905931,
+              -0.40209026463501774,
+              0.1042080318384135
+            ]
+          }
+        ],
+        "local_owners": 6,
+        "final_first4": [
+          -0.0066657791328929425,
+          -0.8012235836123489,
+          -0.5204160324011021,
+          0.17815653392166095
+        ]
+      },
+      "last_logits": [
+        -0.0066657791328929425,
+        -0.8012235836123489,
+        -0.5204160324011021,
+        0.17815653392166095,
+        1.0839718022385552,
+        -0.16062585751539393,
+        0.9044071895512766,
+        0.462974422816189,
+        0.880476707699664,
+        0.48486517546902724,
+        -0.6078213607579952,
+        -0.07731138087436867,
+        -0.9844653737571113,
+        -0.21682337954260736,
+        0.03608566090598675,
+        0.22950245796767166,
+        -0.30406597347375824,
+        0.31699168263175626,
+        -0.219805849620451,
+        -0.2375367187993926,
+        -0.49176956707770936,
+        -0.7886168190014322,
+        0.37789868933911336,
+        -0.5718115775377043,
+        -0.05870179896341854,
+        -0.9355598904576028,
+        -1.1061571085914659,
+        0.5129936312072562,
+        0.03659773425475399,
+        0.25121274295544016,
+        0.6384672460998551,
+        0.03421163771452479
+      ],
+      "greedy_ids": [
+        [
+          1,
+          3,
+          5,
+          7,
+          27,
+          8,
+          30,
+          14
+        ]
+      ],
+      "checks": {
+        "future_perturbation_max_abs": 4.440892098500626e-16,
+        "every_prefix_max_abs": 8.881784197001252e-16,
+        "chunked_prefix_recomputation_max_abs": 6.661338147750939e-16,
+        "next_token_cross_entropy_random_weights": 3.703868910566878,
+        "embedding_gradient_l2": 0.252847576754517,
+        "all_present_gradients_finite": true,
+        "parameters_with_gradients": 200
+      },
+      "generation_method": "greedy argmax, full-prefix recomputation each step"
+    }
+  }
+}

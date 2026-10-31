@@ -1,0 +1,140 @@
+<section id="reading"><h2>Prerequisites</h2>
+<p>These notes continue <a href="https://iamyanbo.github.io/llm-notes/foundations/">Foundations</a>. They assume its construction of a causal transformer, including embeddings, attention, residual connections, vocabulary logits and the next-token objective.</p>
+<ul><li><strong>Linear algebra:</strong> matrix multiplication, dot products and linear maps.</li><li><strong>Calculus:</strong> gradients and the chain rule.</li><li><strong>Probability:</strong> conditional distributions, softmax and expectation.</li><li><strong>Implementation:</strong> tensor shapes and basic PyTorch operations for the code sections.</li></ul>
+<p><a href="https://iamyanbo.github.io/llm-notes/transformers/">Transformers in Practice</a> provides broader background on memory and conditional computation. The code here uses small, randomly initialized text models so that we can inspect every intermediate tensor on a CPU. The released architecture is the subject of the essay; the smaller implementation gives us something we can run and check.</p>
+</section>
+<section id="why"><h2>What we are trying to make less expensive</h2>
+<p>Foundations gives us a causal transformer. Before changing it, consider three ways we might ask more of it: give it more learned capacity, carry a richer state through the stack, or let it use a longer history. Each is useful, and each can enlarge the computation.</p>
+<p>A wider dense feed-forward layer adds parameters but makes every token execute larger matrix multiplications. A wider representation carries more coordinates but also widens the functions that process it. A longer attention history retains more entries and gives each new full-attention query more comparisons.</p>
+<div data-explanation="costs"></div>
+<p>DeepSeek V4 addresses these costs in three ways. It stores many feed-forward networks but uses only a few for each token. It carries several residual streams while keeping each attention or feed-forward input narrow. For a long history, it keeps recent tokens in detail and compresses older tokens, then selects which compressed entries to read.</p>
+<p>We begin with <a href="/experts/">one expert</a>: a feed-forward network applied to one token. Then we study how experts are chosen, how the residual streams carry their outputs, and how attention reads the history. Once we understand these parts, we can put them together into <a href="/v4-forward/#architecture">the complete architecture</a>.</p>
+</section>
+<section id="week"><h2>One week with DeepSeek V4</h2>
+<p>This week covers <strong>DeepSeek V4</strong>, one module at a time. V4.1 follows afterwards. Read the linked paper passages alongside these notes, and try reproducing the calculations or implementing the modules yourself. If something is unclear, turn it into a question: what would you need to calculate, change or test to answer it? Try your own approach, then compare it with the paper and released code.</p>
+<div class="table-wrap"><table><caption>The first seven study days</caption><thead><tr><th>Day</th><th>Focus</th><th>Keep at the end</th></tr></thead><tbody>
+<tr><td><a href="/experts/#capacity">1</a></td><td>Brief orientation, then expert modules</td><td>One expert and a worked routed mixture</td></tr>
+<tr><td><a href="/residuals/#wider-stream">2</a></td><td>Simpler residual connections, then streams and mHC</td><td>One complete residual update</td></tr>
+<tr><td><a href="/compression/#why-compress">3</a></td><td>Compressed Sparse Attention, then its memory construction</td><td>CSA's two memory paths, one pooled entry and its completion rule</td></tr>
+<tr><td><a href="/attention/#query-construction">4</a></td><td>The Lightning Indexer: queries, scores and addresses</td><td>Derived queries and head weights, then selected completed addresses</td></tr>
+<tr><td><a href="/attention/#local-global">5</a></td><td>Shared-KV attention, sink and RoPE</td><td>One head's sum, the sink's effect and the value's positional frame</td></tr>
+<tr><td><a href="/positions/#grouping">6</a></td><td>Grouped return, HCA, full V4 assembly and MTP</td><td>A connected block, vocabulary scores and the auxiliary input</td></tr>
+<tr><td><a href="/training/#muon">7</a></td><td>Muon and a complete forward trace</td><td>A small optimizer calculation and an annotated model trace</td></tr>
+</tbody></table></div>
+<p>Use <strong>Start Day</strong> in each plan to enter the article. The section headings show your day and position in its reading. Follow the links between reading blocks and stop at <strong>End of Day</strong>; optional material is labelled separately. The contents also lets you browse by day or by section.</p>
+<div class="study-days">
+<details class="study-day" id="day-1" open><summary>Day 1 · The problems, then one expert at a time</summary>
+<p>Begin with the <a href="#why">opening motivation</a> and its three cost diagrams. The detailed architecture is the result we will reach on day 6; today needs only the reason to begin constructing its parts.</p>
+<ol>
+<li><strong>Brief orientation.</strong> Distinguish more stored capacity, richer carried state and a longer readable history. Name the corresponding expert, residual and attention changes without tracing their complete wiring.</li>
+<li><strong>One expert.</strong> Begin with a single input row. Follow the two SwiGLU projections, their coordinatewise product and the return map. Inspect V4's clamping separately.</li>
+<li><strong>A returned-vector mixture.</strong> Combine a few known expert outputs and the shared expert. Only then introduce the router that chooses identities and weights.</li>
+<li><strong>Selection, addressing and dispatch.</strong> Separate corrected selection scores from mixture affinities; compare learned routing with token-ID routing; follow outputs back to their token positions.</li>
+<li><strong>MTP's purpose only.</strong> Distinguish the main next-token target from an auxiliary further-ahead target. Save its fusion and full block for day 6.</li>
+</ol>
+<p><strong>Reading:</strong> <a href="#why">the short orientation</a>, then <a href="/experts/">the expert chapter</a> in its displayed order, ending at <a href="/experts/#mtp-purpose">MTP's purpose</a>. Compare with <a href="https://arxiv.org/html/2606.19348v1#S2.SS1">V4 §2.1</a>; the inherited-component background is in <a href="https://arxiv.org/html/2412.19437v2">V3</a>. Source units for today are <code>Expert</code>, <code>Gate</code> and <code>MoE</code>.</p>
+<p><strong>Stopping point:</strong> one expert calculation and a weighted mixture of actual output vectors, with the chosen identities distinguished from their weights. A short target-shift sketch records MTP's purpose. No full model diagram or implementation is required today.</p>
+<p><a class="text-link" href="/experts/">Start the Day 1 reading ↓</a></p>
+</details>
+<details class="study-day" id="day-2"><summary>Day 2 · Simpler connections, then mHC</summary>
+<p>Begin by changing the ordinary residual connection one choice at a time. Work through scalar update strength, the accumulated effect of the old path, and retaining two rows before studying HC's connection maps.</p>
+<ol>
+<li><strong>Try simpler connections.</strong> Reuse the Day 1 expert output. Compare a half-sized update, a scaled old path, and keeping before-and-after rows with a narrow read.</li>
+<li><strong>Build one HC update.</strong> Learn how a fixed collection of streams is read and updated. Follow one complete pass before naming A, B and C.</li>
+<li><strong>Control the bypass.</strong> Extend the scalar amplification experiment to a mixing matrix. Examine both row and column sums, then work two Sinkhorn divisions.</li>
+<li><strong>Generate the coefficients.</strong> Follow the predictor's inputs, weights and constrained outputs before composing the attention and expert updates.</li>
+</ol>
+<p><strong>Reading:</strong> start with <a href="/residuals/#wider-stream">the simpler attempts</a>, then <a href="/residuals/#hyper-connections">HC</a>, and continue through <a href="/residuals/#whole-block">the V4 wrapper</a>. Consult <a href="https://arxiv.org/html/2606.19348v1#S2.SS2">V4 §2.2</a> and <a href="https://arxiv.org/abs/2512.24880">the mHC paper</a> alongside the constructions. Stop before Single-Pass mHC.</p>
+<p><strong>Stopping point:</strong> Follow two successive residual updates: the second reads the rows changed by the first. The worked calculation keeps two streams, then relates the same rule to V4's four. Stop before Single-Pass mHC.</p>
+</details>
+<details class="study-day" id="day-3"><summary>Day 3 · Compressed Sparse Attention and why it is built this way</summary>
+<p>Begin with CSA as a whole: why it retains recent detail, builds compressed memory and selects among summaries. Then construct its compressor, with each operation answering a difficulty in that design.</p>
+<ol>
+<li><strong>Understand CSA's parts.</strong> Compare keeping every position, keeping only a window and merging the whole history. Explain why CSA combines recent individual entries with grouped summaries, then selects summaries for main attention.</li>
+<li><strong>Prepare memory content.</strong> Locate the per-token attention inputs after Day 2's stream mixture and RMSNorm. Show why the compressor has a learned content map, and calculate its candidate vectors.</li>
+<li><strong>Learn what to retain.</strong> Try an average and a scalar mixture before separate coordinate weights. Trace the score map, normalization and pooling; explain what the block-position offsets add.</li>
+<li><strong>Remove artificial boundaries.</strong> Motivate overlapping blocks and their two learned roles. Account for missing candidates and causal completion, then place the completed memory back in the CSA overview.</li>
+</ol>
+<p><strong>Reading:</strong> <a href="/compression/#why-compress">why CSA has these parts</a>, then follow the compressed-memory path through <a href="/compression/#projection-order">candidate content</a>, <a href="/compression/#weighted-block">pooling</a> and <a href="/compression/#pool-code">the code connection</a>. Compare with <a href="https://arxiv.org/html/2606.19348v1#S2.SS3">V4 §2.3 and Figure 3</a>, then §2.3.1 and the released <code>Compressor</code>.</p>
+<p><strong>Stopping point:</strong> Explain how CSA's recent entries, compressed memory and selection fit together. Trace the compressor's example to (4, 3.5) and establish when an overlapping entry is complete. Days 4–5 develop selection and main attention; HCA follows on Day 6.</p>
+</details>
+<details class="study-day" id="day-4"><summary>Day 4 · Lightning Indexer: from the current token to addresses</summary>
+<p>Stay with one choice of summaries throughout the calculation. Each step answers a difficulty in the preceding attempt, from a ranking that ignores the receiving token to head matches that disagree.</p><ol>
+<li><strong>Make the choice depend on the current token.</strong> Compare recency and a stored-only ranking with a query–key comparison. Locate the prepared attention input and the indexer's separate compressed keys.</li>
+<li><strong>Construct the queries and use them.</strong> Form the shared latent, expand it into two indexer queries, and compare the same two summaries. Explain why their two head matches leave a combination rule to choose.</li>
+<li><strong>Work through that rule.</strong> Compare signed addition, equal positive-head addition and the learned head mixture. Derive the mixture coefficients when they are needed, then calculate the scores.</li>
+<li><strong>Respect completion before ranking.</strong> Reject a high-scoring future entry, then keep the best available addresses. Main-attention query expansion is an optional reference after this calculation.</li></ol>
+<p><strong>Reading:</strong> <a href="/attention/#query-construction">the Lightning Indexer's purpose and query preparation</a>, then <a href="/attention/#two-comparisons">its scores and selection</a>; compare with the indexer in <a href="https://arxiv.org/html/2606.19348v1#S2.SS3.SSS1">V4 §2.3.1</a> and the released <code>Indexer</code>.</p>
+<p><strong>Stopping point:</strong> Trace the displayed maps to queries (1,0), (0,1) and head weights (1,1/2), then recover addresses 0 and 1 with scores 4 and 3. Entry 4 remains unavailable to query 15 and first becomes eligible at 19.</p></details>
+<details class="study-day" id="day-5"><summary>Day 5 · Shared-KV attention, its sink and its positional frame</summary>
+<p>Begin with why the stored vectors are shared, then work the main reader before changing its denominator or rotating its values.</p><ol>
+<li><strong>Build one main-entry list.</strong> Gather recent entries and selected summaries. Distinguish sharing across heads from using the same vector as key and value.</li>
+<li><strong>Compute the ordinary sum.</strong> Use the supplied main query and entries, one denominator and the same vectors in the value sum.</li>
+<li><strong>Motivate the sink.</strong> See why common logit shifts cannot reduce real entries' total softmax weight. Add a zero-valued competitor and trace the changed output.</li>
+<li><strong>Follow position in both roles.</strong> Compare rotary pairs before and after a common shift, then explain and compute inverse query rotation on transmitted values.</li></ol>
+<p><strong>Reading:</strong> <a href="/attention/#local-global">shared-KV main attention</a> through <a href="/attention/#attention-reference">the allowed-entry check</a>, then <a href="/positions/#rotating">RoPE</a> and <a href="/positions/#shared-vector">the value's relative frame</a>. Sources: Shared Key-Value MQA in <a href="https://arxiv.org/html/2606.19348v1#S2.SS3.SSS1">§2.3.1</a> and <a href="https://arxiv.org/html/2606.19348v1#S2.SS3.SSS3">§2.3.3</a>. The longer frequency schedule remains optional.</p>
+<p><strong>Stopping point:</strong> Follow the no-sink result (3 log 3 / 4, 8), its sink-adjusted result (3 log 3 / 8, 4), and the two positional cases returning the same unweighted pair (0,−1). Stop before the frequency schedule and grouped return.</p></details>
+<details class="study-day" id="day-6"><summary>Day 6 · Return the head outputs, then assemble V4</summary>
+<p>Introduce grouped output projection and HCA before putting them into the complete block. Finish by constructing the ordinary readout and the separate MTP input.</p><ol>
+<li><strong>Return to model width.</strong> Compare a dense map with reducing groups first. Work the supplied head outputs and displayed maps, and identify what the reduction loses.</li>
+<li><strong>Introduce HCA.</strong> Motivate coarser memory without an indexer. Compare its source support and completed-entry counts with CSA.</li>
+<li><strong>Connect known interfaces.</strong> Follow the embedding, four streams, attention and expert updates, then the released layer schedule. Keep detailed numerical formats as an optional reference.</li>
+<li><strong>Construct both predictions.</strong> Generate explicit readout gains and vocabulary scores. Separately normalize/project the observed next-token embedding and hidden streams for MTP, then assign the shifted auxiliary loss.</li></ol>
+<p><strong>Reading:</strong> <a href="/positions/#grouping">grouped return</a>, <a href="/v4-forward/#hca">HCA</a> and the <a href="/v4-forward/#architecture">connected V4 architecture</a> through generation; then <a href="/prediction/#mtp">the auxiliary objective</a> and <a href="/prediction/#v4-auxiliary-readout">its readout</a>. Compare with grouped projection/HCA in <a href="https://arxiv.org/html/2606.19348v1#S2.SS3">V4 §2.3</a> and the released <code>Block</code>, <code>ParallelHead</code> and <code>MTPBlock</code>.</p>
+<p><strong>Stopping point:</strong> Connect the full V4 path and the three-ID readout probabilities (.6534,.2744,.0722). Trace the MTP example to fused stream 0 (1.3416,1.8614); its extra block targets t+2 after receiving the recorded t+1 embedding. Stop at the auxiliary readout.</p></details>
+<details class="study-day" id="day-7"><summary>Day 7 · Muon: change the weights, then inspect a full forward trace</summary>
+<p>Follow the loss's gradient through momentum and the matrix transformation before taking the parameter step. Then use the executable miniature to check the assembled forward function.</p><ol>
+<li><strong>Prepare Muon's input.</strong> Distinguish the raw gradient, momentum buffer and Nesterov direction. Derive the example diag(4,1).</li>
+<li><strong>Change directional gains.</strong> See why one scalar rescaling keeps their ratio, then motivate polar transformation, the bounded working range and the polynomial iteration.</li>
+<li><strong>Take the step.</strong> Explain shape scaling, learning rate and independent weight decay. Follow the resulting parameter update and identify the reported optimizer groups.</li>
+<li><strong>Check the composed graph.</strong> Choose V4 miniature, follow compressed-attention layer 2 and compare a prefix with its matching whole-sequence output. Keep its reduced dimensions and omitted serving paths explicit.</li></ol>
+<p><strong>Reading:</strong> <a href="/training/#muon">Muon</a> and <a href="/training/#optimizer-groups">the parameter step</a>, then <a href="/reference/#model-boundary">the executable miniature</a>. Sources: <a href="https://arxiv.org/html/2606.19348v1#S2.SS4">V4 §2.4 and Algorithm 1</a> and <a href="https://github.com/KellerJordan/Muon">Muon background code</a>. V4.1's table balancing is on Day 17; implementation and measurements follow on Days 18–19.</p>
+<p><strong>Stopping point:</strong> Follow the accumulated direction to the hand update diag(.996454,.996454), then annotate one token's complete miniature path with shapes and recorded values. The checks concern the computed function and causality; no trained language quality or serving speed is established.</p></details>
+</div>
+<p>The continuation below develops V4.1 and the implementation questions separately. Its day numbers mark reading boundaries; they do not impose a deadline.</p>
+</section>
+<section id="continuation"><h2>After the V4 week</h2>
+<p>V4.1 changes a model whose parts we now know. We will ask what each change buys before tracing its implementation: prepare global memory earlier, reuse it across layers, retrieve learned features for token patterns, and bring images into the language sequence. Drafting, training and serving follow once those paths are clear.</p>
+<p>These lessons cover the later chapters as part of the same reading route. Start with the linked module map, follow the worked case, and stop at the marked boundary. The exact layouts and source notes remain available beside the construction they specify.</p>
+<div class="study-days"><details class="study-day" id="day-8"><summary>Day 8 · V4.1: change the memory dependency</summary><p><a href="/residuals/#single-pass">Begin this lesson</a>. Trace the carried input mixture, then separate current decoder queries/local KV from encoder-sourced global memory.</p></details>
+<details class="study-day" id="day-9"><summary>Day 9 · CSA2: share memory, reconsider addresses</summary><p><a href="/reuse/#owners">Begin this lesson</a>. Identify the cache owner and selection source, then trace a candidate restriction before Top-K.</p></details>
+<details class="study-day" id="day-10"><summary>Day 10 · Replay: rebuild the state that was omitted</summary><p><a href="/ced/#local-cost">Begin this lesson</a>. Draw the missing local dependencies at a replay boundary and distinguish encoder and decoder cache writes.</p></details>
+<details class="study-day" id="day-11"><summary>Day 11 · Engram: retrieve a pattern, gate it with context</summary><p><a href="/engram/#addressing">Begin this lesson</a>. Follow one suffix through lookup, projection and gated addition; then reproduce its address and chunk history.</p></details>
+<details class="study-day" id="day-12"><summary>Day 12 · Vision: from measured pixels to language rows</summary><p><a href="/vision/#patches">Begin this lesson</a>. Trace a pixel contrast, spatial patch features and channel-major unshuffle into a reserved image span.</p></details>
+<details class="study-day" id="day-13"><summary>Day 13 · Precision: retain codes and their units</summary><p><a href="/precision/#representable">Begin this lesson</a>. Reconstruct an FP4 group, count values plus scales, and derive the ideal global-cache payload.</p></details>
+<details class="study-day" id="day-14"><summary>Day 14 · DSpark: do the heavy draft work once</summary><p><a href="/prediction/#dspark">Begin this lesson</a>. Keep the heavy slot features fixed while a sampled predecessor changes the next proposal distribution.</p></details>
+<details class="study-day" id="day-15"><summary>Day 15 · Verification: decide what becomes history</summary><p><a href="/prediction/#verification">Begin this lesson</a>. Recover the target probability mass and commit only the accepted prefix with consistent request state.</p></details>
+<details class="study-day" id="day-16"><summary>Day 16 · Assemble the V4.1 computation</summary><p><a href="/v41-forward/#input">Begin this lesson</a>. Follow the complete V4.1 path and compare its dependencies with the recorded six-layer miniature.</p></details>
+<details class="study-day" id="day-17"><summary>Day 17 · Training: which parameters receive which update?</summary><p><a href="/training/#objective">Begin this lesson</a>. Relate the loss gradient, head-wise matrix update, balanced table update and staged training dependencies.</p></details>
+<details class="study-day" id="day-18"><summary>Day 18 · Systems: continue the right request</summary><p><a href="/systems/#state-contract">Begin this lesson</a>. Account for unfinished groups, interleaved requests and tentative state before interpreting timings.</p></details>
+<details class="study-day" id="day-19"><summary>Day 19 · Experiments: separate a check from a claim</summary><p><a href="/investigations/#first-run">Begin this lesson</a>. Read the recorded evidence, then specify a controlled precision, replay or index-cost comparison.</p></details>
+</div>
+<p>Read the corresponding paper passage alongside the lesson, reproduce the small calculation, or change one assumption and work out what follows. The final experiment day distinguishes the checks already recorded here from questions that need a new implementation or trained weights.</p>
+</section>
+<section id="paper-map"><h2>Where the paper and these notes differ</h2>
+<p>These notes slow down the <a href="https://arxiv.org/html/2606.19348v1#S2">paper</a> to ask why each module is needed before explaining how it works. We build the parts separately, with calculations and code where they help, then assemble the model. The table below connects each lesson to its source passage.</p>
+<div class="table-wrap"><table><caption>V4 paper → current reading → study day</caption><thead><tr><th>Paper</th><th>Current blog location</th><th>Day</th></tr></thead><tbody>
+<tr><td>§2.1 · inherited MoE / MTP</td><td><a href="/experts/">Experts</a>; <a href="/experts/#mtp-purpose">MTP purpose</a></td><td>1; MTP composition on 6</td></tr>
+<tr><td>§2.2 · mHC</td><td><a href="/residuals/">Residuals</a>, before Single-Pass</td><td>2</td></tr>
+<tr><td>§2.3.1 · CSA overview and compressor</td><td><a href="/compression/">CSA and its memory construction</a></td><td>3</td></tr>
+<tr><td>§2.3.1 · Lightning Indexer</td><td><a href="/attention/#query-construction">Query maps</a> and <a href="/attention/#two-comparisons">selection</a></td><td>4</td></tr>
+<tr><td>§2.3.1 / §2.3.3 · main attention and details</td><td><a href="/attention/#local-global">Main attention</a>, <a href="/positions/">position</a>, <a href="/positions/#grouping">grouped return</a></td><td>5–6</td></tr>
+<tr><td>§2.3.2 / §2.3.4 · HCA and efficiency</td><td><a href="/v4-forward/#hca">HCA</a>, followed by <a href="/v4-forward/#architecture">architecture assembly</a></td><td>6</td></tr>
+<tr><td>§2.4 · Muon</td><td><a href="/training/#muon">Muon and its parameter step</a></td><td>7</td></tr>
+<tr><td>§§3–5 · systems, training and evaluation</td><td><a href="/systems/">Implementation</a> and <a href="/training/">training</a> provide selected explanations, not a section-by-section treatment of the entire report</td><td>17–19; source references for the full reports</td></tr>
+</tbody></table></div>
+<p>The paper is the technical reference throughout. The notes change the order of exposition so that a new operation answers a question already raised. The source links let you compare the derivation with the released model and try a different example yourself.</p>
+<p>The paper's indexing and our code convention also need an explicit translation at compression boundaries. Differences in symbols or section order should not be confused with differences in the function. Conversely, a readable inference path, a proposed serving schedule and a measured training result require separate evidence.</p>
+</section>
+<section id="models"><h2>The model family</h2>
+<details class="code-detail"><summary>Reference model sizes; revisit after the modules</summary>
+<p>There are three configurations to keep apart. V4 Flash and V4 Pro share a design at different scales. V4.1 Flash changes the memory dependencies, adds image input, and introduces learned tables addressed by short token sequences. We will build V4 first, then ask what V4.1 changes. The rounded counts below give the scale of the actual models: B means a billion parameters and T a trillion. Prefill processes the supplied prompt; decode extends it.</p>
+<div class="table-wrap"><table><caption>Released architecture descriptions</caption><thead><tr><th>Model</th><th>Backbone parameters</th><th>Active per token</th><th>Layers</th></tr></thead><tbody><tr><td>V4 Flash</td><td>284 B</td><td>13 B</td><td>43</td></tr><tr><td>V4 Pro</td><td>1.6 T</td><td>49 B</td><td>61</td></tr><tr><td>V4.1 Flash</td><td>552 B</td><td>8 B prefill / 16 B decode</td><td>40</td></tr></tbody></table></div>
+<p>The gap between stored and active parameters is deliberate. An expert layer can hold hundreds of alternative transformations while executing only a few for one token. The rest still need storage. Thus a 284 B model with 13 B active parameters is neither a dense 13 B model nor a computation through all 284 B coefficients. V4.1's backbone count also excludes its 196 B conditional-memory parameters and its image pathway. These distinctions will matter when we count the work.</p>
+<p class="source">Model descriptions: <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro">V4</a> and <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash">V4.1</a>. Exact configurations and immutable revisions appear in <a href="/sources/">the references</a>.</p>
+</details>
+</section>
+<section id="conventions"><h2>Conventions used here</h2>
+<p>We retain the notation developed in <a href="https://iamyanbo.github.io/llm-notes/foundations/#language-to-representations">Foundations</a>. Token representations are rows: <span class="math-inline">H\in\mathbb R^{B\times T\times d}</span> has batch size <span class="math-inline">B</span>, sequence length <span class="math-inline">T</span> and hidden width <span class="math-inline">d</span>. A row-map <span class="math-inline">W\in\mathbb R^{d\times c}</span> produces <span class="math-inline">HW</span> with output width <span class="math-inline">c</span>; PyTorch stores the transposed weight in <code>Linear(d,c)</code>.</p>
+<p>Token and layer indices start at zero. The row at position <span class="math-inline">t</span> may read positions <span class="math-inline">j\leq t</span> and predicts token <span class="math-inline">t+1</span>, as in <a href="https://iamyanbo.github.io/llm-notes/foundations/#causal-decoder">the causal decoder</a>. Compression indices, cache owners and residual-copy axes will be defined when those constructions arise.</p>
+</section>

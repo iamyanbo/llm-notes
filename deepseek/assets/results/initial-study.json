@@ -1,0 +1,410 @@
+{
+  "status": "component study only; no full architecture or trained-model reproduction",
+  "python": "3.13.13",
+  "torch": "2.12.0+cpu",
+  "device": "cpu",
+  "seed": 20261016,
+  "threads": 1,
+  "source_manifest": "sources.lock.json",
+  "source_manifest_sha256": "0dd340fd4e1114bf4741d3d6787be2dd0d34e00c4c01a393898c538eef18e31c",
+  "implementation_sha256": {
+    "deepseek_study/compression.py": "31b58da5feed58049441dc5319f30a2b7ef766e27609d15bcb858fe04e9eca88",
+    "deepseek_study/cache_accounting.py": "c8ee45f36371a532258ba6a6be745d29c220eed1aadba87ec2558b74a17ccd0d",
+    "experiments/initial_study.py": "8021c7b10eb3cf57d733585fce908f563010f093a842142fbaf7170d21e070ef"
+  },
+  "streaming_pooling": [
+    {
+      "ratio": 1,
+      "shape": [
+        2,
+        129,
+        16
+      ],
+      "max_abs_streaming_error": 0.0,
+      "pending_tokens": 0
+    },
+    {
+      "ratio": 2,
+      "shape": [
+        2,
+        64,
+        16
+      ],
+      "max_abs_streaming_error": 0.0,
+      "pending_tokens": 1
+    },
+    {
+      "ratio": 4,
+      "shape": [
+        2,
+        32,
+        16
+      ],
+      "max_abs_streaming_error": 0.0,
+      "pending_tokens": 1
+    }
+  ],
+  "packed_global_cache": {
+    "scope": "analytic packed global main KV and indexer K only",
+    "sequence_length": 1000000,
+    "owner_count": 4,
+    "main_entry_bytes": 288,
+    "index_entry_bytes": 68,
+    "asymptotic_bytes_per_token": 890.0,
+    "total_bytes": 890000000,
+    "owners": [
+      {
+        "layer_zero_based": 2,
+        "compression_ratio": 2,
+        "entries": 500000,
+        "main_bytes": 144000000,
+        "index_bytes": 34000000
+      },
+      {
+        "layer_zero_based": 8,
+        "compression_ratio": 2,
+        "entries": 500000,
+        "main_bytes": 144000000,
+        "index_bytes": 34000000
+      },
+      {
+        "layer_zero_based": 14,
+        "compression_ratio": 2,
+        "entries": 500000,
+        "main_bytes": 144000000,
+        "index_bytes": 34000000
+      },
+      {
+        "layer_zero_based": 20,
+        "compression_ratio": 1,
+        "entries": 1000000,
+        "main_bytes": 288000000,
+        "index_bytes": 68000000
+      }
+    ]
+  },
+  "counterfactuals": {
+    "disable_layer_sharing_keep_formats": {
+      "scope": "analytic packed global main KV and indexer K only",
+      "sequence_length": 1000000,
+      "owner_count": 38,
+      "main_entry_bytes": 288,
+      "index_entry_bytes": 68,
+      "asymptotic_bytes_per_token": 10324.0,
+      "total_bytes": 10324000000,
+      "owners": [
+        {
+          "layer_zero_based": 2,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 3,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 4,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 5,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 6,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 7,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 8,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 9,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 10,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 11,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 12,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 13,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 14,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 15,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 16,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 17,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 18,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 19,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 144000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 20,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 21,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 22,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 23,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 24,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 25,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 26,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 27,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 28,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 29,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 30,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 31,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 32,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 33,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 34,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 35,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 36,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 37,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 38,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        },
+        {
+          "layer_zero_based": 39,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 288000000,
+          "index_bytes": 68000000
+        }
+      ]
+    },
+    "main_fp8_keep_sharing_and_scale_granularity": {
+      "scope": "analytic packed global main KV and indexer K only",
+      "sequence_length": 1000000,
+      "owner_count": 4,
+      "main_entry_bytes": 544,
+      "index_entry_bytes": 68,
+      "asymptotic_bytes_per_token": 1530.0,
+      "total_bytes": 1530000000,
+      "owners": [
+        {
+          "layer_zero_based": 2,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 272000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 8,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 272000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 14,
+          "compression_ratio": 2,
+          "entries": 500000,
+          "main_bytes": 272000000,
+          "index_bytes": 34000000
+        },
+        {
+          "layer_zero_based": 20,
+          "compression_ratio": 1,
+          "entries": 1000000,
+          "main_bytes": 544000000,
+          "index_bytes": 68000000
+        }
+      ]
+    }
+  },
+  "limitations": [
+    "Cache bytes are analytic, not measured VRAM; excludes local SWA and temporary state.",
+    "Pooling core excludes learned projections, RMSNorm, RoPE, quantization and attention.",
+    "Counterfactuals are storage calculations, not alternative trained models or V4 baselines.",
+    "No latency, downstream accuracy or training convergence was measured."
+  ]
+}

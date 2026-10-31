@@ -19,6 +19,12 @@ async function files(directory){
 }
 const built=await files(root);
 const htmlFiles=built.filter(f=>f.endsWith('.html'));
+// Many chapter aliases reference the same long essay; parse each target once.
+const documents=new Map();
+function documentFor(file){
+  if(!documents.has(file))documents.set(file,readFile(file,'utf8').then(html=>parseHTML(html).document));
+  return documents.get(file);
+}
 function localFile(reference,base){
   const url=new URL(reference,base);
   if(url.origin!==siteUrl.origin)return null;
@@ -34,7 +40,7 @@ test('every published page, image, stylesheet, and script resolves under the pro
   for(const file of htmlFiles){
     const base=new URL(path.relative(root,file).replaceAll(path.sep,'/'),siteUrl);
     const html=await readFile(file,'utf8');
-    const {document}=parseHTML(html);
+    const document=await documentFor(file);
     for(const element of document.querySelectorAll('a[href],link[href],script[src],img[src]')){
       const reference=element.getAttribute('href')??element.getAttribute('src');
       if(/^(data:|mailto:|tel:)/.test(reference))continue;
@@ -42,7 +48,7 @@ test('every published page, image, stylesheet, and script resolves under the pro
       if(!local)continue;
       await access(local.file);
       if(local.url.hash){
-        const target=local.file===file?document:parseHTML(await readFile(local.file,'utf8')).document;
+        const target=local.file===file?document:await documentFor(local.file);
         assert.ok(target.getElementById(decodeURIComponent(local.url.hash.slice(1))),reference);
       }
     }
@@ -53,10 +59,10 @@ test('every published page, image, stylesheet, and script resolves under the pro
 });
 
 test('browser modules and local CSS font/image references resolve after copying the essays',async()=>{
-  for(const file of built.filter(f=>/\.(js|css)$/.test(f))){
+  for(const file of built.filter(f=>/\.(m?js|css)$/.test(f))){
     const code=await readFile(file,'utf8');
     const base=new URL(path.relative(root,file).replaceAll(path.sep,'/'),siteUrl);
-    const refs=file.endsWith('.js')?[...code.matchAll(/\b(?:from|import)\s*['"](\.{1,2}\/[^'"]+)['"]/g)].map(m=>m[1]):[...code.matchAll(/url\(\s*['"]?([^)'"\s]+)['"]?\s*\)/g)].map(m=>m[1]);
+    const refs=/\.m?js$/.test(file)?[...code.matchAll(/\b(?:from|import)\s*['"](\.{1,2}\/[^'"]+)['"]/g)].map(m=>m[1]):[...code.matchAll(/url\(\s*['"]?([^)'"\s]+)['"]?\s*\)/g)].map(m=>m[1]);
     for(const ref of refs){
       const local=localFile(ref,base);
       if(local)await access(local.file);
@@ -74,23 +80,27 @@ test('the public source excludes source hosting identities and draft comment arc
     assert.ok(content.every(file=>file.endsWith('.mdx')));
     assert.ok(!content.includes('page-archive.json'));
   }
-  assert.equal(htmlFiles.length,15);
-  const {document}=parseHTML(await readFile('dist/index.html','utf8'));
+  const deepseekChapters=JSON.parse(await readFile('deepseek/chapters.json','utf8'));
+  assert.equal(htmlFiles.length,15+deepseekChapters.length+3);
+  for(const forbidden of ['.openai','research','qa'])assert.ok(!(await readdir('deepseek')).includes(forbidden));
+  const document=await documentFor(path.join(root,'index.html'));
   assert.ok(document.querySelector('a[href="foundations/"]'));
   assert.ok(document.querySelector('a[href="transformers/"]'));
+  assert.ok(document.querySelector('.deepseek-card a[href="deepseek/"]'));
   assert.ok(document.querySelector('a[href="miscellaneous/"]'));
 });
 
 test('every public page uses the same tab icon with existing SVG, PNG, and ICO files',async()=>{
   let version;
   for(const file of htmlFiles){
-    const {document}=parseHTML(await readFile(file,'utf8'));
+    const document=await documentFor(file);
     const svg=document.querySelector('link[rel=icon][type="image/svg+xml"]');assert.ok(svg,file);
     const png=document.querySelector('link[rel=icon][type="image/png"]');assert.ok(png,file);
     const ico=document.querySelector('link[rel="shortcut icon"]');assert.ok(ico,file);
     const base=new URL(path.relative(root,file).replaceAll(path.sep,'/'),siteUrl);
     const ref=svg.getAttribute('href');
-    if(version===undefined)version=ref;else assert.equal(ref,version);
+    const iconVersion=new URL(ref,base).searchParams.get('v');
+    if(version===undefined)version=iconVersion;else assert.equal(iconVersion,version);
     for(const icon of [svg,png,ico])await access(localFile(icon.getAttribute('href'),base).file);
     assert.doesNotMatch(ref,/^data:/);
   }

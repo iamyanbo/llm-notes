@@ -1,0 +1,110 @@
+<section id="capacity"><h2>More capacity without executing every parameter</h2>
+<p>In the transformer from Foundations, the feed-forward sublayer applies the same learned network at every token position. We can give that network a larger intermediate width, adding more learned features. Every token then passes through the larger matrix multiplications.</p>
+<p>Suppose we want to store more transformations while limiting how much work each token uses. We can keep several feed-forward networks and choose a few for each input. Each network has its own weights and is called an <em>expert</em>. A <em>router</em> chooses which experts run; their output rows are then combined. This is a mixture of experts, or MoE.</p>
+<div data-explanation="day-overview-1"></div>
+<p>We begin with the function computed by one expert. Once its output is known, we can build the mixture and the rule that chooses its members.</p>
+</section>
+<section id="expert-function"><h2>Inside an expert</h2>
+<p>Attention has already let the current token gather information from allowed positions. The feed-forward sublayer now processes the features carried at that position. An expert replaces a feed-forward network, so its input is one contextualized row. It does not perform another attention calculation. Two occurrences of the same token can still give it different inputs because their contexts differ.</p>
+<p>What transformation should it apply? A linear map recombines the input features using fixed coefficients. Two linear maps in succession still form one linear map. A nonlinear operation between them lets the response change with the input.</p>
+<p>A usual feed-forward unit applies an activation to one learned weighted sum. A gated unit goes further: it forms a feature from one weighted sum and controls that feature with another. Separate weights let the two branches respond to different combinations of the same input features. Multiplying their outputs makes the feature's contribution depend on both combinations. DeepSeek V4 uses the gated construction called <em>SwiGLU</em>.</p>
+<p>Each projection box below contains a table of weights. Multiplying a row by that table forms new weighted sums of its features. We will call the gate table <span class="math-inline">W_1</span>, the feature table <span class="math-inline">W_3</span>, and the return table <span class="math-inline">W_2</span>. These names follow the three projections in the expert implementation.</p>
+<p>Training adjusts the projection weights; a forward pass applies the resulting matrices to its input. The drawing uses chosen small matrices so that we can follow the calculation. Its row and column indices start at zero.</p>
+<div data-explanation="expert"></div>
+<h4>Read one column of the feature table</h4>
+<p>The blue input row is <span class="math-inline">x=(1,2)</span>. Find the box labelled <span class="math-inline">W_3</span>: it has two rows, one for each input feature, and three columns, one for each feature it will produce. Its first column is <span class="math-inline">(2,0)</span>. Multiply the first input by the first weight, the second input by the second weight, and add:</p>
+<div class="math">1\cdot2+2\cdot0=2.</div>
+<p>The second column, <span class="math-inline">(1,1)</span>, gives <span class="math-inline">1\cdot1+2\cdot1=3</span>. The third, <span class="math-inline">(0,1)</span>, gives <span class="math-inline">1\cdot0+2\cdot1=2</span>. Collecting those three results is exactly what row-by-matrix multiplication means here:</p>
+<div class="math">xW_3=(2,3,2).</div>
+<p>These are the three intermediate features on the right branch of the diagram. The multiplication used only the two numbers in this token's input row and the six stored numbers in <span class="math-inline">W_3</span>.</p>
+<h4>Use a second table to control those features</h4>
+<p>Now follow the same input row into <span class="math-inline">W_1</span> on the left branch. Its columns are <span class="math-inline">(1,0)</span>, <span class="math-inline">(0,1)</span> and <span class="math-inline">(-1,1)</span>. They give <span class="math-inline">1</span>, <span class="math-inline">2</span> and <span class="math-inline">-1+2=1</span>:</p>
+<div class="math">xW_1=(1,2,1).</div>
+<p>These are the <em>inputs</em> to the gate activation, not yet the multipliers. For each scalar gate input <span class="math-inline">s</span>, SiLU computes</p>
+<div class="math">\operatorname{SiLU}(s)=s\,\sigma(s),\qquad \sigma(s)=\frac{1}{1+\exp(-s)}.</div>
+<p>Here <span class="math-inline">\sigma</span> is the sigmoid. For a gate input of 1, SiLU gives <span class="math-inline">1/(1+e^{-1})\approx0.7311</span>. For 2, it gives <span class="math-inline">2/(1+e^{-2})\approx1.7616</span>. Applying it separately to the three gate inputs gives</p>
+<div class="math">\operatorname{SiLU}(xW_1)\approx(0.7311,1.7616,0.7311).</div>
+<p>The feature row on the right has stayed <span class="math-inline">(2,3,2)</span> while this happens. The SiLU branch can amplify or reverse a feature as well as suppress it.</p>
+<h4>Match coordinates before adding anything</h4>
+<p>Multiply the first gate multiplier by the first feature, then do the same for the second and third. The symbol <span class="math-inline">\odot</span> means this coordinatewise multiplication. Call the resulting row <span class="math-inline">p</span>:</p>
+<div class="math">p=\operatorname{SiLU}(xW_1)\odot(xW_3)\approx(1.4621,5.2848,1.4621).</div>
+<p>The first product is <span class="math-inline">0.7311\cdot2\approx1.4621</span>; the second is <span class="math-inline">1.7616\cdot3\approx5.2848</span>. The three products remain separate until the return projection combines them.</p>
+<h4>Read the return table</h4>
+<p>The row <span class="math-inline">p</span> now reaches <span class="math-inline">W_2</span> at the bottom of the diagram. This table has three input rows and two output columns. Its first column is <span class="math-inline">(1,0.5,1)</span>, so the first output combines all three products:</p>
+<div class="math">1.4621\cdot1+5.2848\cdot0.5+1.4621\cdot1\approx5.5666.</div>
+<p>The second column is <span class="math-inline">(-1,1,0)</span>. It gives <span class="math-inline">-1.4621+5.2848+0\approx3.8227</span>. The expert's output, written <span class="math-inline">E(x)</span>, is therefore</p>
+<div class="math">E(x)=pW_2\approx(5.5666,3.8227).</div>
+<p>The input and output both contain two numbers, but they contain different values. That matching width lets us add outputs from several experts, and later add the combined result to the residual state. Values displayed here are rounded; the diagram computes with unrounded numbers.</p>
+<h4>Write the same calculation for any width</h4>
+<p>We can now name the widths without changing the operation. Let <span class="math-inline">d</span> be the number of input and output features, and <span class="math-inline">m_e</span> the number of intermediate features inside an expert. Our example has <span class="math-inline">d=2</span> and <span class="math-inline">m_e=3</span>. For an input row <span class="math-inline">x\in\mathbb R^d</span>, the projection shapes are</p>
+<div class="math">W_1,W_3\in\mathbb R^{d\times m_e},\qquad W_2\in\mathbb R^{m_e\times d}.</div>
+<p>Both branches need the same intermediate width so their coordinates can be multiplied in pairs. That width can be larger or smaller than the input width. The basic expert function is the calculation we have just followed, collected into one expression:</p>
+<div class="math">E(x)=\left(\operatorname{SiLU}(xW_1)\odot(xW_3)\right)W_2,\qquad W_2\in\mathbb R^{m_e\times d}.</div>
+<p>V4 Flash uses <span class="math-inline">m_e=2048</span> and Pro uses 3072. Each expert has its own three parameter tables. The same tables are reused whenever that expert processes a token. We now have a complete function to choose and combine; first, we need to include V4's clipping operation at the point where it acts.</p>
+</section>
+<section id="clamping"><h2>Bounding the intermediate product</h2>
+<p>In our calculation, the largest feature-branch value was 3. A trained projection can produce much larger values, and multiplying large values from both branches can enlarge the intermediate product further. DeepSeek V4 therefore clips the projection outputs before forming the product.</p>
+<p>Look at the rows labelled <span class="math-inline">xW_1</span> and <span class="math-inline">xW_3</span> in the diagram. The gate-input row is capped above at 10. The feature row is clipped to the interval from −10 to 10. These are different rules:</p>
+<div class="table-wrap"><table><caption>Clipping acts on the projected values, before SiLU and the product</caption><thead><tr><th>Projection</th><th>If its value is 20</th><th>If its value is −20</th></tr></thead><tbody><tr><td>Gate input, xW₁</td><td>Use 10 as the SiLU input</td><td>Keep −20 as the SiLU input</td></tr><tr><td>Feature, xW₃</td><td>Use 10 in the product</td><td>Use −10 in the product</td></tr></tbody></table></div>
+<p>Our chosen values are inside these limits, so the worked output stays the same. For larger values, clipping changes the expert's function. The individual expert is now specified. We can give further copies their own weights and combine their outputs.</p>
+</section>
+<section id="mixture"><h2>Combining routed and shared functions</h2>
+<p>Suppose two groups of tokens usually reach different experts, but both require some of the same computation. Each group of experts may have to learn its own copy. We could instead reserve part of the feed-forward capacity for computation that every token can use, leaving the remaining capacity available through routing.</p>
+<p>This is the motivation for <a href="https://arxiv.org/html/2401.06066v1#S3.SS2">shared expert isolation</a> in DeepSeekMoE. The shared expert runs for every token; the router chooses additional experts alongside it. The aim is to reduce duplication of common knowledge among routed experts.</p>
+<p>Let the expert we calculated in §1.2 be the shared expert, written <span class="math-inline">E_s</span>. For the same input <span class="math-inline">x=(1,2)</span>, we already have its output:</p>
+<div class="math">E_s(x)\approx(5.5666,3.8227).</div>
+<p>We will keep this calculated row as the shared contribution. For the routed branch, use three chosen output rows so that the weighted addition is easy to follow:</p>
+<div class="table-wrap"><table><caption>Chosen routed outputs for x = (1, 2)</caption><thead><tr><th>Expert</th><th>Returned row</th></tr></thead><tbody><tr><td>E₀</td><td>(2, 0)</td></tr><tr><td>E₁</td><td>(0, 4)</td></tr><tr><td>E₂</td><td>(−2, 2)</td></tr></tbody></table></div>
+<p>For this input, the router calculation in the next subsection selects experts 0 and 1, with final weights approximately <span class="math-inline">0.6600</span> and <span class="math-inline">0.8400</span>. Their combined contribution is</p>
+<div class="math">0.6600(2,0)+0.8400(0,4)\approx(1.3201,3.3599).</div>
+<p>Add this contribution to the shared expert's output:</p>
+<div class="math">\underbrace{(5.5666,3.8227)}_{E_s(x)}+\underbrace{(1.3201,3.3599)}_{\text{routed contribution}}\approx(6.8867,7.1825).</div>
+<div data-explanation="mixture"></div>
+<p>The same construction works with any selected set. Write <span class="math-inline">\mathcal S(x)</span> for the selected expert IDs and <span class="math-inline">g_i(x)</span> for expert <span class="math-inline">i</span>'s weight. Then</p>
+<div class="math">y=E_s(x)+\sum_{i\in\mathcal S(x)}g_i(x)E_i(x).</div>
+<p>V4 Flash selects six of 256 routed experts, while Pro selects six of 384. Both also run a shared expert. We have seen how their returned rows combine. The remaining question is how the input determines which routed experts contribute.</p>
+</section>
+<section id="selection-weight"><h2>Choosing experts and weighting their outputs</h2>
+<p>We want the selected mixture to vary with the input. A learned projection can assign one score to each expert. For <span class="math-inline">x=(1,2)</span>, choose the router matrix</p>
+<div class="math">R=\begin{pmatrix}1&amp;0&amp;-1\\0&amp;1&amp;0\end{pmatrix},\qquad xR=(1,2,-1).</div>
+<p>Each column corresponds to an expert. The third score, for example, is <span class="math-inline">1(-1)+2(0)=-1</span>. Follow a column through the calculation below.</p>
+<div data-explanation="router"></div>
+<p>V4 transforms these scores with square-root softplus. If <span class="math-inline">a_i</span> denotes expert <span class="math-inline">i</span>'s resulting affinity,</p>
+<div class="math">a_i=\sqrt{\operatorname{softplus}(xR_i)},\qquad \operatorname{softplus}(s)=\log(1+e^s).</div>
+<p>For our three scores, this gives <span class="math-inline">a\approx(1.1460,1.4584,0.5597)</span>. Selecting the largest two keeps experts 0 and 1. We normalize their affinities over this selected set:</p>
+<div class="math">\frac{a_0}{a_0+a_1}\approx0.4400,\qquad \frac{a_1}{a_0+a_1}\approx0.5600.</div>
+<p>V4 also applies a fixed routed scale <span class="math-inline">\rho</span>: 1.5 for Flash and 2.5 for Pro. Using Flash's value gives final weights <span class="math-inline">g_0\approx0.6600</span> and <span class="math-inline">g_1\approx0.8400</span>, which are the weights used in §1.4. Expert 2 receives weight zero.</p>
+<p>With <span class="math-inline">N</span> experts, the projection has <span class="math-inline">N</span> columns, so <span class="math-inline">R\in\mathbb R^{d\times N}</span>. Selecting <span class="math-inline">K</span> experts by their affinities and scaling the normalized weights gives</p>
+<div class="math">\mathcal S(x)=\operatorname{TopK}_i(a_i),\qquad g_i(x)=\rho\,\frac{a_i}{\sum_{j\in\mathcal S(x)}a_j}\quad(i\in\mathcal S(x)).</div>
+<p>This is the selection rule before load balancing. The load-balancing correction in §1.7 will modify these selection scores. First, we examine V4's other way of choosing expert identities.</p>
+</section>
+<section id="hash-routing"><h2>Choosing identities from the token ID</h2>
+<p>Tokenization turns the input text into a sequence of integer vocabulary IDs. Each ID selects a row from the embedding table—the lookup introduced in <a href="https://iamyanbo.github.io/llm-notes/foundations/#token-vectors">Foundations §2.2</a>. Attention and the feed-forward layers then transform these embedding rows into contextual representations.</p>
+<p>The original token ID remains available as those representations change. We can use it as a stable address for choosing experts: repeated occurrences of a token look up the same expert IDs, while their current hidden rows determine what those experts compute.</p>
+<p>V4 uses this token-ID rule in its first three expert sublayers. A stored table maps each token ID to the routed expert IDs that should run. The released implementation calls this hash routing. For these layers, that table lookup replaces the Top-K choice of identities.</p>
+<p>The selected experts still receive the current hidden row, and the router still computes affinities from it to weight their outputs. Repeated occurrences of the same token therefore choose the same expert identities in these layers, but can produce different weights and output vectors.</p>
+<p>The later expert layers use the learned Top-K selection just developed. That selection creates another practical question: what happens when many tokens choose the same experts?</p>
+</section>
+<section id="balancing"><h2>Distributing tokens among experts</h2>
+<p>Consider eight tokens, each selecting two of four experts. There are sixteen expert assignments in total. If each expert receives four assignments, the work is evenly distributed. If every token chooses experts 0 and 1, those two each receive eight assignments and the other experts receive none. The total count is still sixteen, but the busiest experts now have twice as much work.</p>
+<p>During training, V4 adjusts per-expert selection corrections to influence this distribution. Write expert <span class="math-inline">i</span>'s correction as <span class="math-inline">b_i</span>. For learned routing, the corrected selection rule becomes</p>
+<div class="math">\mathcal S(x)=\operatorname{TopK}_i(a_i+b_i).</div>
+<p>For our router, the affinities are <span class="math-inline">(1.1460,1.4584,0.5597)</span>. Initially, experts 0 and 1 are selected. Set expert 2's correction to 1.0. Its selection score becomes <span class="math-inline">0.5597+1.0=1.5597</span>, so experts 1 and 2 now run.</p>
+<p>In expert order 1 then 2, the original affinities are <span class="math-inline">1.4584</span> and <span class="math-inline">0.5597</span>. Normalizing and applying Flash's scale gives <span class="math-inline">g_1\approx1.0840</span> and <span class="math-inline">g_2\approx0.4160</span>. The routed contribution becomes</p>
+<div class="math">1.0840(0,4)+0.4160(-2,2)\approx(-0.8320,5.1680).</div>
+<p>The shared expert continues to return the row calculated in §1.2. Adding it gives</p>
+<div class="math">y\approx(5.5666,3.8227)+(-0.8320,5.1680)\approx(4.7346,8.9906).</div>
+<p>The number of executed experts has stayed the same, but the chosen functions and their combined result have changed. Move the correction below to see where that change occurs.</p>
+<div data-lab="router" class="lab"><p>Change a selection correction and follow the chosen mixture.</p></div>
+<p>Once the IDs are known, execution groups token rows by the expert they need. This is <em>dispatch</em>. Each expert processes its assigned rows, and <em>gather</em> returns the weighted results to the tokens they belong to. This groups the work by expert, then restores the original token order.</p>
+<p>The implementation can multiply a selected expert's intermediate row by its scalar mixture weight before applying <span class="math-inline">W_2</span>. Because that return projection has no bias, linearity gives the same result as scaling the final expert output. Training decides how to update the selection corrections; the forward calculation here uses their stored values.</p>
+<p class="source">Source: <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/60d8d70770c6776ff598c94bb586a859a38244f1/inference/model.py">V4 Gate, Expert and MoE</a>; <a href="https://arxiv.org/html/2606.19348v1#S2.SS1">V4 §2.1</a>. Gated feed-forward background: <a href="https://arxiv.org/html/2002.05202v1#S2">GLU variants</a>.</p>
+</section>
+<section id="mtp-purpose"><h2>One representation can supervise another prediction</h2>
+<p>We have followed a token through an expert, combined expert outputs, and constructed the routing rules. These functions belong inside the main transformer. There is one more inherited training idea to locate before we finish Day 1: multi-token prediction, or MTP.</p>
+<p>The main model learns to predict the next token. During training, the recorded continuation also tells us the token after that. An auxiliary module can use the main representation together with the recorded next token to make this additional prediction. This creates another supervised prediction task; it does not give the main next-token predictor access to the future token.</p>
+<p>For the chosen sequence “the cat sat,” the main prediction after “the” targets “cat.” The auxiliary module also receives the recorded token “cat” and targets “sat.” The main prediction of “cat” must not receive “cat” as an input. The two tasks therefore have different input information and different targets.</p>
+<p>Today we only need this purpose and information boundary. On <a href="/prediction/#v4-auxiliary-readout">Day 6</a>, after constructing the other modules, we will connect the auxiliary module's inputs, transformer block and readout. </p>
+<p>Stop here for Day 1. The output of the expert sublayer is now a known row-valued function. <a href="/residuals/#wider-stream">Day 2</a> asks how that function receives its input from, and returns its output to, the state carried between layers.</p>
+<p class="source">Inherited objective: <a href="https://arxiv.org/html/2606.19348v1#S2.SS1">V4 §2.1</a> and <a href="https://arxiv.org/html/2412.19437v2">V3</a>.</p>
+</section>

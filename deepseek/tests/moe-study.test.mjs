@@ -1,0 +1,32 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {moeExample} from '../site/moe-model.mjs';
+import {expertExample} from '../site/expert-model.mjs';
+import {routerDiagram,routerFigure,mixtureDiagram} from '../site/moe-study.mjs';
+import {initializeRouterStudy} from '../site/moe-ui.mjs';
+const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-12);
+test('router columns produce scores, then positive affinities, sparse weights and a shared sum',()=>{
+ const r=moeExample();assert.deepEqual(r.scores,[1,2,-1]);
+ [1,2,-1].forEach((s,i)=>near(r.affinity[i],Math.sqrt(Math.log(1+Math.exp(s)))));
+ assert.deepEqual(r.selected,[1,0]);near(r.weights.reduce((a,b)=>a+b,0),1.5);assert.equal(r.weights[2],0);
+ assert.deepEqual(r.shared,expertExample().output);
+ r.output.forEach((out,j)=>near(out,r.shared[j]+r.expertOutputs.reduce((sum,row,i)=>sum+r.weights[i]*row[j],0)));
+ assert.deepEqual(moeExample(.5).selected,[1,0]);assert.deepEqual(moeExample(1).selected,[2,1]);
+ assert.deepEqual(moeExample(1).affinity,r.affinity);
+ assert.match(mixtureDiagram(),/The expert calculated in §1.2/);
+ assert.match(routerFigure(),/Router matrix R/);
+ for(let stage=0;stage<5;stage++)for(let col=0;col<3;col++)assert.doesNotMatch(routerDiagram(col,stage),/NaN|undefined/);
+});
+test('the router controller follows all columns and stages, stops and restarts',()=>{
+ const nodes=new Map(),root={querySelector(key){if(!nodes.has(key))nodes.set(key,{value:'0',innerHTML:'',textContent:'',disabled:false,events:{},addEventListener(t,fn){this.events[t]=fn;}});return nodes.get(key);}};
+ initializeRouterStudy(root);
+ const get=s=>root.querySelector(`[data-router-${s}]`),fire=(s,t)=>get(s).events[t]();
+ assert.match(get('stage').textContent,/1 \/ 5/);assert.equal(get('reset').disabled,true);
+ get('column').value='2';fire('column','change');fire('next','click');
+ assert.match(get('detail').innerHTML,/1 × -1 \+ 2 × 0 = -1/);
+ fire('next','click');assert.match(get('detail').innerHTML,/0.560/);
+ fire('next','click');assert.match(get('detail').innerHTML,/unselected/);
+ fire('next','click');assert.match(get('detail').innerHTML,/6.887, 7.183/);assert.equal(get('next').disabled,true);
+ fire('next','click');assert.match(get('stage').textContent,/5 \/ 5/);
+ fire('reset','click');assert.match(get('stage').textContent,/1 \/ 5/);assert.equal(get('next').disabled,false);
+});

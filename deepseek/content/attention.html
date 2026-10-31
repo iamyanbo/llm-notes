@@ -1,0 +1,111 @@
+<section id="query-construction"><h2>The Lightning Indexer: compare a summary with the current token</h2>
+<div class="day-orientation">
+<p>The <strong>Lightning Indexer</strong> makes a cheap shortlist of compressed memories before main attention reads them.</p>
+<p>Compression has reduced the history, but a long conversation can still leave thousands of compressed vectors. Reading all of them with main attention would still be expensive. So:</p>
+<ol>
+<li><strong>Represent each compressed block with a small learned key.</strong> This is a compact description used for selection.</li>
+<li><strong>Compare the current token's query with those keys.</strong> The indexer scores which blocks seem useful for what this token needs.</li>
+<li><strong>Pass the highest-scoring block addresses to main attention.</strong> Main attention reads the corresponding richer compressed vectors, alongside recent individual token entries, and computes its own attention weights.</li>
+</ol>
+<p>The indexer is a learned scoring module inside the attention layer, built mainly from projections and dot products. <strong>The indexer decides where to look; main attention decides what information to take from those places.</strong> Which blocks matter can change for every new token.</p>
+</div>
+<div data-explanation="day-overview-4"></div>
+<p>Consider the long source file from Day 3. A function call near its end may depend on a definition thousands of tokens earlier. Keeping the most recent summaries is a cheap selection rule, but can exclude that definition. Always choosing the same summaries has the same difficulty: the choice cannot respond to what the current token needs.</p>
+<h4>What is being compared?</h4>
+<p>Day 3's compressor learned what to put in a main-memory entry. Choosing whether to read that entry is another task. V4 gives the indexer its own compressor, with separate learned projections and a smaller output width. The two compressors describe the same source blocks at the same addresses, but can retain different features.</p>
+<p>For a small example, take the following two-coordinate indexer keys. These are chosen, already prepared outputs of that separate compressor, not raw token rows or the pooled main-memory vector <span class="math-inline">(4,3.5)</span> from Day 3. We hold their position and precision transforms fixed while examining selection.</p>
+<div class="table-wrap"><table><caption>Chosen indexer keys · current token at position 15</caption><thead><tr><th>Address</th><th>Contributing positions with overlap</th><th>Key</th><th>Last source needed</th></tr></thead><tbody><tr><td>0</td><td>0–3</td><td>(4, −1)</td><td>3</td></tr><tr><td>1</td><td>0–7</td><td>(2, 2)</td><td>7</td></tr><tr><td>2</td><td>4–11</td><td>(−1, 4)</td><td>11</td></tr><tr><td>3</td><td>8–15</td><td>(0, 1)</td><td>15</td></tr><tr><td>4</td><td>12–19</td><td>(99, 0)</td><td>19 · not yet available</td></tr></tbody></table></div>
+<p>The fifth row represents an entry that can be present when a longer prefix is processed in parallel. Day 3's completion rule forbids query 15 from using it. Keep that boundary in view when we eventually rank the scores.</p>
+<p>Among the completed entries, selecting the largest first key coordinate would always choose address 0. The keys alone cannot make the ranking change with the receiving token. We need a comparison that also uses that token's features. As in Foundations, a learned <em>query</em> supplies the receiving side of a query–key dot product.</p>
+<h4>Form the receiving side from the current input</h4>
+<p>The available input is the attention vector <span class="math-inline">h_t</span> from Day 3: the current layer's stream mixture after RMSNorm, before this layer's attention. For this one-token calculation call it <span class="math-inline">x</span>, and choose <span class="math-inline">x=(3,4)</span>. Query projections will read this same row. They do not read an earlier stored summary.</p>
+<p>A single query gives one comparison per key. Several learned query heads let the indexer make several comparisons before combining them. Main attention also needs its own queries. Mapping every input feature directly to all those query coordinates would require a large parameter matrix. V4 shares an intermediate query vector between the two modules, then gives each its own expansion. This intermediate is called the <em>query latent</em>.</p>
+<p>We can follow that extra step without introducing all the heads at once. Choose the first map <span class="math-inline">W_{Qa}=I_2</span>, so <span class="math-inline">xW_{Qa}=(3,4)</span>. Before expansion, V4 applies RMSNorm to control this intermediate's scale. With unit gains and epsilon omitted, the divisor is <span class="math-inline">\sqrt{(3^2+4^2)/2}=\sqrt{12.5}</span>, giving</p>
+<div class="math">z=(3,4)/\sqrt{12.5}\approx(.8485,1.1314).</div>
+<div data-explanation="week-query-latent"></div>
+<p>This small illustration keeps the latent at width two so we can see its coordinates. In the released model it is narrower than the input. The saving comes with a restriction: later query maps can use only the distinctions retained by the latent. Normalization controls its scale; it does not recover a discarded distinction.</p>
+<h4>Use the latent to make two comparisons</h4>
+<p>We need each indexer query to have the same two-coordinate width as a key. V4 learns this expansion. For our example, choose four columns, enough for two such queries:</p>
+<div class="math">W_I=\begin{bmatrix}5\sqrt2/6&amp;0&amp;0&amp;0\\0&amp;0&amp;0&amp;5\sqrt2/8\end{bmatrix},\qquad zW_I=(1,0,0,1).</div>
+<p>The first two output coordinates form query head 0, <span class="math-inline">q_0=(1,0)</span>; the last two form head 1, <span class="math-inline">q_1=(0,1)</span>. This arrangement changes no values. Both queries came from the same current input through the same latent, with different columns choosing their features.</p>
+<div data-explanation="week-indexer-queries"></div>
+<p>Use them immediately on addresses 0 and 1. Head 0 gives scores 4 and 2, preferring address 0. Head 1 gives −1 and 2, preferring address 1. We have made the comparisons responsive to the input, but now two heads can disagree. An address needs one score for selection, so we must decide how those matches should combine.</p>
+</section>
+
+<section id="two-comparisons"><h2>Combine the head matches, then select completed addresses</h2>
+<p>For address 0 the pair of matches is <span class="math-inline">(4,-1)</span>; for address 1 it is <span class="math-inline">(2,2)</span>. Adding directly gives 3 and 4. Under that rule, the negative match in head 1 reduces the strong match in head 0. V4 chooses a different rule: each head contributes its positive match, while a negative match contributes zero before the heads are mixed.</p>
+<p>Keeping the positive part is <span class="math-inline">\operatorname{ReLU}(s)=\max(0,s)</span>. Our pairs become <span class="math-inline">(4,0)</span> and <span class="math-inline">(2,2)</span>. This is a design choice, not a requirement of ranking. It changes which combinations of matches the indexer can distinguish.</p>
+<div data-explanation="week-indexer-matches"></div>
+<h4>Let the current input also choose the head mixture</h4>
+<p>Adding these positive matches equally gives 4 for both addresses. Equal addition has treated a strong match in one head exactly like two smaller matches. V4 lets the current input predict a coefficient for each head, so those contributions need not be treated equally.</p>
+<p>The head-weight map reads the original attention input <span class="math-inline">x=(3,4)</span>. Choose</p>
+<div class="math">W_w=\begin{bmatrix}2/3&amp;1/3\\0&amp;0\end{bmatrix},\qquad xW_w=(2,1).</div>
+<p>These are two raw head coefficients. The implementation scales them by the reciprocal square root of head width times head count, controlling the numerical scale as those dimensions change. Here the divisor is <span class="math-inline">\sqrt{2\cdot2}=2</span>, leaving <span class="math-inline">(1,1/2)</span>. This common positive scale does not change the ranking for a fixed query; it is V4's magnitude convention for the score.</p>
+<div data-explanation="week-indexer-weights"></div>
+<p>Now head 0 contributes twice as much per unit match as head 1. The two addresses that tied under equal addition receive</p>
+<div class="math">I_{15,0}=1\cdot4+\tfrac12\cdot0=4,\qquad I_{15,1}=1\cdot2+\tfrac12\cdot2=3.</div>
+<p>Addresses 2 and 3 similarly score 2 and .5. The final key would score 99. The following trace multiplies each rectified match by its head coefficient and adds across heads; it does not yet choose an address.</p>
+<div data-explanation="week-indexer-scores"></div>
+<p>The coefficient map can predict different mixtures for a different input. Its coefficients are not constrained to be positive; our chosen pair is positive to make the arithmetic easy to follow. Rectification happens to the matches before this learned mixture, so final index scores need not be probabilities or even positive.</p>
+<h4>The largest score can still be unavailable</h4>
+<p>If we simply took the two largest scores, 99 would win. But that key uses positions 12–19, including inputs later than the receiving position 15. It remains unavailable regardless of its score. Apply the completion rule before ranking: exclude address 4, then keep the best two remaining scores.</p>
+<p>Addresses 0 and 1 now win with scores 4 and 3. This two-address limit is chosen for the example. No softmax is needed: selecting the greatest scores requires their ordering, not normalized contributions to a vector sum.</p>
+<div data-explanation="week-indexer-selection"></div>
+<p>We have followed the whole choice: the current token supplied queries and head coefficients; each key supplied comparison coordinates; rectification and the head mixture produced scores; completion determined which scores could compete. Main attention will read different, wider vectors at the selected addresses tomorrow.</p>
+<p>To collect the score rule, let <span class="math-inline">H_I</span> be the number of indexer heads, <span class="math-inline">q^I_{t,r}</span> the receiving token's query in head <span class="math-inline">r</span>, <span class="math-inline">k^I_j</span> the stored key at address <span class="math-inline">j</span>, and <span class="math-inline">w^I_{t,r}</span> the scaled head coefficient just constructed. Then</p>
+<div class="math">I_{t,j}=\sum_{r=0}^{H_I-1}w^I_{t,r}\max\!\left(0,(q^I_{t,r})^\top k^I_j\right).</div>
+<p>V4 uses 64 indexer heads of width 128 and a configured limit on selected completed addresses. Its scan is smaller than the many width-512 main-head comparisons. Selection still costs work over the indexer keys; the selected addresses limit the later main read.</p>
+<details class="code-detail"><summary>Reference: how main attention uses the same query latent</summary>
+<p>The indexer needed only its own expansion to choose addresses. Main attention takes the same normalized latent <span class="math-inline">z</span> and uses a separate map. For a two-head example choose</p>
+<div class="math">W_{Qb}=\begin{bmatrix}1&amp;0&amp;1&amp;1\\0&amp;1&amp;1&amp;-1\end{bmatrix},\qquad zW_{Qb}=(z_0,z_1,z_0+z_1,z_0-z_1).</div>
+<p>Arrange the first two coordinates as main head 0 and the last two as main head 1. Their raw pairs are approximately <span class="math-inline">(.8485,1.1314)</span> and <span class="math-inline">(1.9799,-.2828)</span>. Larger query magnitudes can enlarge dot products without changing direction. V4 therefore also normalizes each main query by its own RMS, giving <span class="math-inline">(.8485,1.1314)</span> and <span class="math-inline">(1.4,-.2)</span>. The indexer does not receive this additional per-main-head RMS operation.</p>
+<div data-explanation="week-main-queries"></div>
+<p>For input width <span class="math-inline">d</span>, latent width <span class="math-inline">r_q</span>, main head count <span class="math-inline">h</span> and head width <span class="math-inline">c</span>, the two query matrices have shapes <span class="math-inline">d\times r_q</span> and <span class="math-inline">r_q\times hc</span>. Flash uses <span class="math-inline">4096\rightarrow1024\rightarrow64\times512</span>. A direct map would contain 134,217,728 coefficients; the factored maps contain 37,748,736. Latent RMSNorm has learned coordinate gains; subsequent main-head RMS normalization has unit gains. The implementation uses epsilon <span class="math-inline">10^{-6}</span>.</p>
+</details>
+<details class="code-detail"><summary>Optional: compare selected addresses with later attention weights</summary><div data-lab="indexer" class="lab"><p>Change Top-K and compare selected entries with main attention weights.</p></div></details>
+<p class="source">Separate compressor and scoring rule: <a href="https://arxiv.org/html/2606.19348v1#S2.SS3.SSS1">V4 §2.3.1</a>; shared latent, normalization, scaling and execution order: <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/60d8d70770c6776ff598c94bb586a859a38244f1/inference/model.py#L380">pinned Indexer and Attention</a>.</p>
+</section>
+
+<section id="local-global"><h2>Shared-KV attention: read the entries at those addresses</h2>
+<div class="day-orientation"><p><strong>Shared key-value attention</strong> is the main reader in V4. It gathers the selected compressed entries and recent individual entries, compares them with each main query, and combines their vectors. Today we construct that result, then follow how the stored vectors' position affects it.</p></div>
+<div data-explanation="day-overview-5"></div>
+<p>The indexer has answered where to read. It has not yet chosen the coefficients in this vector sum. A block can be selected for all main heads while each head assigns it a different weight.</p>
+<h4>Reduce the stored side, keep several queries</h4>
+<p>A conventional multi-head construction can keep a separate key and value for every head at every retained position. That memory grows with both history length and head count. Sharing one key/value collection across heads removes the copies, while separate queries still permit different comparisons.</p>
+<p>V4 makes a further restriction: the stored key and value are the same vector. A head compares its query with an entry, then transmits that very entry in the weighted sum. Training must learn coordinates that support both roles.</p>
+<div class="table-wrap"><table><caption>Stored vectors per retained entry, holding vector width fixed</caption><thead><tr><th>Construction</th><th>Stored vectors</th></tr></thead><tbody><tr><td>Separate key/value per head, h heads</td><td>2h</td></tr><tr><td>One key and one value shared across heads</td><td>2</td></tr><tr><td>V4: one vector shared as key and value</td><td>1</td></tr></tbody></table></div>
+<p>The recent branch supplies at most 128 entries, including the current position. CSA's indexer supplies selected global addresses. A recent token may also contribute to a compressed summary; these remain distinct learned entries. Gather both kinds into one list for the main reader.</p>
+<h4>One head, two supplied entries</h4>
+<p>Use a separate small main-attention example. Take prepared query <span class="math-inline">q=(\sqrt2,0)</span>, local entry <span class="math-inline">c_0=(0,2)</span> and global entry <span class="math-inline">c_1=(\log3,10)</span>. These chosen vectors start at the comparison boundary, after their projections and positional preparation. They are not the smaller indexer keys used yesterday.</p>
+<p>Use the scaled dot product from Foundations, dividing by the square root of this example's head width, <span class="math-inline">\sqrt2</span>. The two logits are 0 and <span class="math-inline">\log3</span>. Exponentiation gives amounts 1 and 3; dividing by their common total gives weights <span class="math-inline">1/4</span> and <span class="math-inline">3/4</span>.</p>
+<div data-explanation="week-attention-base"></div>
+<div class="math">o=\tfrac14(0,2)+\tfrac34(\log3,10)=\left(\frac{3\log3}{4},8\right).</div>
+<p>The first coordinate receives only the global entry's contribution; the second receives both <span class="math-inline">\tfrac14\cdot2</span> and <span class="math-inline">\tfrac34\cdot10</span>. Each vector has supplied both its comparison coordinates and its transmitted coordinates.</p>
+<p>Both entries competed in the same denominator. Normalizing the local and global branches separately would give each sole entry weight one, producing <span class="math-inline">(\log3,12)</span> instead. That is a different combination. V4 normalizes the gathered list once.</p>
+<p>For the general head, let <span class="math-inline">\mathcal A_t</span> be that list's allowed entry IDs, <span class="math-inline">c_j</span> their stored vectors and <span class="math-inline">q_{t,h}</span> the query in main head <span class="math-inline">h</span>. Its logit for entry <span class="math-inline">j</span> is</p>
+<div class="math">\ell_{t,h,j}=q_{t,h}^{\top}c_j/\sqrt{512},\qquad j\in\mathcal A_t,</div>
+<p>using V4's width 512. We have a vector sum. The next question is whether a head must always transmit a full unit of weight from real entries.</p>
+</section>
+
+
+<section id="sink"><h2>The attention sink: allow less contribution from real entries</h2>
+<p>Ordinary softmax assigns the real entries a total weight of one. Lowering every real logit by the same amount does not reduce that total: a common exponential factor cancels from numerator and denominator. A head can change which entry contributes, but cannot use this normalization alone to reduce the total real-entry weight.</p>
+<p>V4 adds a learned <em>attention sink</em>: one logit per head with value zero. It competes for weight in the same denominator. Weight sent to this candidate contributes no vector to the output.</p>
+<p>Keep the previous query and both entries fixed. Choose sink logit <span class="math-inline">\log4</span>, giving amount 4. The real amounts remain 1 and 3, so the common denominator becomes 8.</p>
+<div data-explanation="week-attention"></div>
+<p>The local and global entries now receive weights <span class="math-inline">1/8</span> and <span class="math-inline">3/8</span>. The sink takes the remaining half and transmits zero. Thus</p>
+<div class="math">o=\tfrac18(0,2)+\tfrac38(\log3,10)+\tfrac48(0,0)=\left(\frac{3\log3}{8},4\right).</div>
+<p>Both output coordinates have halved. The relative proportion of the two real contributions is unchanged. The learned sink score lets the model adjust that extra competition; our value <span class="math-inline">\log4</span> was chosen to expose its effect.</p>
+<p>Let <span class="math-inline">a_h</span> be the sink logit in head <span class="math-inline">h</span>. Collecting the calculation gives</p>
+<div class="math">o_{t,h}=\frac{\sum_{j\in\mathcal A_t}\exp(\ell_{t,h,j})c_j}{\exp(a_h)+\sum_{j\in\mathcal A_t}\exp(\ell_{t,h,j})}.</div>
+<p>The numerator is a vector. The sink adds to the scalar denominator and contributes zero to the numerator, so that denominator divides every output coordinate.</p>
+</section>
+
+
+<section id="attention-reference"><h2>Check the list before computing the sum</h2>
+<p>Before following position, reconstruct the candidate list at an actual block boundary. With stride four, query 2 sees local positions 0, 1 and 2. Global entry 0 still lacks position 3. Query 3 sees local positions 0 through 3 and may also read the completed global entry 0 if selected.</p>
+<div class="table-wrap"><table><caption>One receiving position, one list, one normalization</caption><thead><tr><th>Query</th><th>Local entries</th><th>Eligible global entries before selection</th><th>Other softmax candidate</th></tr></thead><tbody><tr><td>2</td><td>Positions 0, 1, 2</td><td>None</td><td>Head's sink</td></tr><tr><td>3</td><td>Positions 0, 1, 2, 3</td><td>Entry 0</td><td>Head's sink</td></tr><tr><td>7</td><td>Positions 0–7</td><td>Entries 0, 1</td><td>Head's sink</td></tr></tbody></table></div>
+<p>Gather the eligible selected vectors, calculate the main logits, append the sink score, then normalize once. This sequence gives an implementation something concrete to check: every gathered vector must be justified by a local position or a completed selected address.</p>
+<p>The remaining issue is the coordinate system of those vectors. Thus far our chosen comparisons held positions fixed. A stored summary also has an anchor position, and V4 uses that anchor in rotary position encoding. Since the vector is shared as key and value, we must follow what rotation does to both roles.</p>
+<p class="source">Joint attention, shared KV and sink: <a href="https://arxiv.org/html/2606.19348v1#S2.SS3">V4 §2.3</a>; implementation: <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/60d8d70770c6776ff598c94bb586a859a38244f1/inference/model.py#L380">pinned Attention</a>.</p>
+</section>

@@ -21,6 +21,13 @@ for(const chapter of ['foundations','transformers']){
   await applyFavicons(path.join(checkout,'dist'));
   await cp(path.join(checkout,'dist'),path.join(output,chapter),{recursive:true});
 }
+const deepseek=path.join(root,'deepseek');
+const python=process.env.PYTHON||(process.platform==='win32'?'python':'python3');
+const deepseekBuild=spawnSync(python,['build.py'],{cwd:deepseek,env:{...process.env,SITE_URL:siteUrl},stdio:'inherit'});
+if(deepseekBuild.error)throw deepseekBuild.error;
+if(deepseekBuild.status!==0)process.exit(deepseekBuild.status||1);
+await applyFavicons(path.join(deepseek,'dist'),{recursive:true});
+await cp(path.join(deepseek,'dist'),path.join(output,'deepseek'),{recursive:true});
 const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const portfolio=config.portfolioUrl?`<a href="${escape(config.portfolioUrl)}">\u2190 Portfolio</a>`:'';
 const template=await readFile(path.join(root,'site/index.html'),'utf8');
@@ -30,5 +37,5 @@ await applyFavicons(output);
 await buildMiscellaneous({root,output,siteUrl,config});
 await writeFile(path.join(output,'.nojekyll'),'');
 await writeFile(path.join(output,'robots.txt'),`User-agent: *\nAllow: /\nSitemap: ${siteUrl}/sitemap.xml\n`);
-await writeFile(path.join(output,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['','foundations/','transformers/','miscellaneous/'].map(route=>`<url><loc>${escape(siteUrl+'/'+route)}</loc></url>`).join('')}</urlset>`);
+await writeFile(path.join(output,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['','foundations/','transformers/','deepseek/','miscellaneous/'].map(route=>`<url><loc>${escape(siteUrl+'/'+route)}</loc></url>`).join('')}</urlset>`);
 console.log('Built GitHub Pages site at '+siteUrl+'/');

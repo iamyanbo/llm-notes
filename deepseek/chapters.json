@@ -1,0 +1,116 @@
+[
+  {
+    "slug": "start",
+    "part": "The problem",
+    "title": "Introduction",
+    "deck": "A brief motivation, then individual modules before the complete architecture."
+  },
+  {
+    "slug": "experts",
+    "part": "DeepSeek V4",
+    "title": "Mixture of experts",
+    "deck": "Store many transformations while choosing only a few to execute for each token."
+  },
+  {
+    "slug": "residuals",
+    "part": "DeepSeek V4",
+    "title": "Manifold-constrained hyper-connections",
+    "deck": "Carry more state between sublayers without making every expensive transformation wider."
+  },
+  {
+    "slug": "compression",
+    "part": "DeepSeek V4",
+    "title": "Compressed Sparse Attention",
+    "deck": "Why CSA keeps recent tokens individually, compresses groups and selects which summaries to read."
+  },
+  {
+    "slug": "attention",
+    "part": "DeepSeek V4",
+    "title": "Sparse attention",
+    "deck": "A smaller memory can still be expensive to search. Choose entries before the wider comparison."
+  },
+  {
+    "slug": "positions",
+    "part": "DeepSeek V4",
+    "title": "Position and output projections",
+    "deck": "Shared keys and values couple positional comparison to the information transmitted."
+  },
+  {
+    "slug": "v4-forward",
+    "part": "DeepSeek V4",
+    "title": "The complete V4 forward pass",
+    "deck": "Connect the V4 blocks from input IDs to the next prediction, with every boundary explicit."
+  },
+  {
+    "slug": "ced",
+    "part": "DeepSeek V4.1",
+    "title": "Causal encoder-decoder",
+    "deck": "A long tool result may need memory more than it needs an upper-layer output at every position."
+  },
+  {
+    "slug": "reuse",
+    "part": "DeepSeek V4.1",
+    "title": "Cross-layer reuse",
+    "deck": "Later layers can ask different questions of the same stored history."
+  },
+  {
+    "slug": "engram",
+    "part": "DeepSeek V4.1",
+    "title": "Conditional memory",
+    "deck": "A short token pattern can choose a learned value; wider context decides how much to use."
+  },
+  {
+    "slug": "vision",
+    "part": "DeepSeek V4.1",
+    "title": "Visual representations",
+    "deck": "A chart's labels do not tell us whether its curve rises. Build rows from the pixels."
+  },
+  {
+    "slug": "precision",
+    "part": "DeepSeek V4.1",
+    "title": "Quantization and cache reconstruction",
+    "deck": "Retain fewer bits per coordinate, then account for rounding, scales and reconstruction."
+  },
+  {
+    "slug": "prediction",
+    "part": "Learning and generation",
+    "title": "Multi-token prediction and drafting",
+    "deck": "Propose several tokens cheaply and distinguish a useful guess from committed history."
+  },
+  {
+    "slug": "v41-forward",
+    "part": "DeepSeek V4.1",
+    "title": "The complete V4.1 computation",
+    "deck": "Follow the current streams, carried mixture and shared memory through one complete prediction."
+  },
+  {
+    "slug": "training",
+    "part": "Learning and generation",
+    "title": "Training objectives and optimization",
+    "deck": "The graph permits information to travel. A loss and an update rule make its parameters learn."
+  },
+  {
+    "slug": "systems",
+    "part": "Implementation and evidence",
+    "title": "Implementation",
+    "deck": "Pausing, sharing and resuming a request expose state that a forward equation can hide."
+  },
+  {
+    "slug": "reference",
+    "part": "Implementation and evidence",
+    "title": "An executable miniature",
+    "deck": "Shrink the dimensions so the composed calculation and its mistakes become inspectable."
+  },
+  {
+    "slug": "investigations",
+    "part": "Implementation and evidence",
+    "title": "Experiments",
+    "deck": "Test the assumptions behind streaming, low precision, replay and restricted search."
+  },
+  {
+    "slug": "sources",
+    "part": "Implementation and evidence",
+    "title": "References",
+    "deck": "Read the reports and released code together, including the places where their execution paths differ."
+  }
+]

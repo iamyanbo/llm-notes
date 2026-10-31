@@ -1,0 +1,5 @@
+miniature/*.py text eol=lf
+miniature/*.json text eol=lf
+miniature/README.md text eol=lf
+# Preserve upstream font-license text, including its trailing spaces.
+assets/fonts/*-OFL.txt whitespace=-blank-at-eol
