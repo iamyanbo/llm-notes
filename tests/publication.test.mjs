@@ -81,13 +81,15 @@ test('the public source excludes source hosting identities and draft comment arc
     assert.ok(!content.includes('page-archive.json'));
   }
   const deepseekChapters=JSON.parse(await readFile('deepseek/chapters.json','utf8'));
-  assert.equal(htmlFiles.length,15+deepseekChapters.length+3);
+  assert.equal(htmlFiles.length,15+deepseekChapters.length+5);
   for(const forbidden of ['.openai','research','qa'])assert.ok(!(await readdir('deepseek')).includes(forbidden));
   const document=await documentFor(path.join(root,'index.html'));
   assert.ok(document.querySelector('a[href="foundations/"]'));
   assert.ok(document.querySelector('a[href="transformers/"]'));
   assert.ok(document.querySelector('.deepseek-card a[href="deepseek/"]'));
   assert.ok(document.querySelector('a[href="miscellaneous/"]'));
+  assert.ok(document.querySelector('#prototypes a[href="serving/"]'));
+  assert.ok(document.querySelector('#prototypes a[href="training/"]'));
 });
 
 test('every public page uses the same tab icon with existing SVG, PNG, and ICO files',async()=>{
