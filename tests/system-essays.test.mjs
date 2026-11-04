@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
-import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, advanceStudy} from '../systems/models.mjs';
+import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, advanceStudy, chunkBudget, kvTransfer, specAllocation, outputUpdate, qualityAdvantages, groupFilter, reductionExample} from '../systems/models.mjs';
 import {sceneFrame, studyFigure} from '../systems/views.mjs';
 import {createStudy, initializeStudies} from '../systems/app.mjs';
 
@@ -79,7 +79,7 @@ test('advantages use the displayed returns and the mixture comparison keeps ten 
 test('every progressive SVG is finite, uniquely labelled, and leaves future outputs empty', () => {
   for (const [kind, spec] of Object.entries(STUDIES)) {
     for (let step = 0; step < spec.steps.length; step++) {
-      const markup = sceneFrame(kind, step, {value: 140}).markup;
+      const markup = sceneFrame(kind, step, {value: spec.parameter?.value}).markup;
       assert.doesNotMatch(markup, /NaN|undefined|Infinity/);
       assert.doesNotMatch(markup, /\bdata-[\w-]+(?:\s|>)/);
       const {document} = parseHTML(markup);
@@ -95,6 +95,89 @@ test('every progressive SVG is finite, uniquely labelled, and leaves future outp
   const {document} = parseHTML(sceneFrame('cluster', 0).markup);
   assert.equal(document.querySelectorAll('.gpu-node').length, 8);
   assert.equal(document.querySelectorAll('.gpu-chip').length, 64);
+});
+
+test('whole-step chunk search respects the budget as the cached context grows', () => {
+  let previous = Infinity;
+  for (let prefix = 2048; prefix <= 16384; prefix += 2048) {
+    const model = chunkBudget(prefix);
+    assert.ok(model.time <= model.budget);
+    assert.ok(model.nextTime > model.budget);
+    assert.ok(model.chunk <= previous);
+    previous = model.chunk;
+    assert.equal(model.pairs, prefix * model.chunk + model.chunk * (model.chunk + 1) / 2);
+  }
+  assert.equal(chunkBudget().chunk, 279);
+  assert.equal(chunkBudget(8192).chunk, 96);
+  assert.ok(chunkBudget().fixedChunkTime < 20);
+  assert.ok(chunkBudget(8192).fixedChunkTime > 20);
+});
+
+test('cache geometry, bandwidth, and executed verification rows alter the serving decision', () => {
+  const transfer = kvTransfer();
+  assert.equal(transfer.bytes, 1472200704);
+  assert.equal(transfer.gib, 1.37109375);
+  assert.equal(transfer.transferMs, 86.693359375);
+  assert.equal(kvTransfer(8).transferMs - 1, 2 * (transfer.transferMs - 1));
+  const equal = specAllocation(2);
+  const concentrated = specAllocation(4);
+  assert.ok(Math.abs(equal.total - 4.46) < 1e-12);
+  assert.ok(Math.abs(concentrated.total - 5.0951) < 1e-12);
+  assert.equal(concentrated.compactMs, equal.compactMs);
+  assert.equal(concentrated.paddedMs, 26);
+  assert.ok(concentrated.compactRate > equal.compactRate);
+  assert.ok(concentrated.paddedRate < equal.paddedRate);
+});
+
+test('the displayed output gradient agrees with finite differences of the stopped-coefficient objective', () => {
+  const model = outputUpdate();
+  const objective = weights => {
+    const logits = [0, 1].map(column => model.hidden.reduce((sum, feature, row) => sum + feature * weights[row][column], 0));
+    return model.coefficient * -Math.log1p(Math.exp(logits[1] - logits[0]));
+  };
+  for (let row = 0; row < 2; row++) for (let column = 0; column < 2; column++) {
+    const plus = model.weights.map(row => row.slice());
+    const minus = model.weights.map(row => row.slice());
+    plus[row][column] += 1e-6;
+    minus[row][column] -= 1e-6;
+    const numerical = (objective(plus) - objective(minus)) / 2e-6;
+    assert.ok(Math.abs(numerical - model.gradient[row][column]) < 1e-8);
+    assert.equal(model.updated[row][column], model.weights[row][column] + model.rate * model.gradient[row][column]);
+  }
+  assert.ok(Math.abs(outputUpdate(0).probability - 0.12) < 1e-12);
+  assert.ok(Math.abs(model.probability - 0.18779067805113286) < 1e-12);
+  assert.ok(objective(model.updated) > objective(model.weights));
+});
+
+test('quality rescaling and group filtering preserve their stated experimental units', () => {
+  const capped = qualityAdvantages();
+  const uncapped = qualityAdvantages(0.2, Infinity);
+  assert.ok(Math.abs(uncapped.adjusted[1] + uncapped.adjusted[2] - uncapped.positiveMass) < 1e-12);
+  assert.equal(capped.scale, 1.25);
+  assert.deepEqual(capped.centered, [-0.4375, 0.1875, 0.6875, -0.4375]);
+  assert.equal(capped.centered.reduce((sum, value) => sum + value, 0), 0);
+  for (const count of [4, 16]) {
+    const model = groupFilter(0.9, count);
+    assert.ok(Math.abs(model.allPass + model.allFail + model.usable - 1) < 1e-12);
+    assert.equal(model.rolloutsPerAccepted, count * model.groupsPerAccepted);
+    assert.ok(Math.abs(model.usable - groupFilter(0.1, count).usable) < 1e-12);
+  }
+  assert.ok(groupFilter(0.9, 16).usable > groupFilter(0.9, 4).usable);
+  assert.ok(groupFilter(0.9, 16).rolloutsPerAccepted > groupFilter(0.9, 4).rolloutsPerAccepted);
+});
+
+test('global prompt normalization survives unequal rank partitions', () => {
+  const model = reductionExample();
+  assert.ok(Math.abs(model.tokenMean - 8.8 / 12) < 1e-12);
+  assert.ok(Math.abs(model.sequenceMean - 0.6) < 1e-12);
+  assert.ok(Math.abs(model.promptMean - 0.7) < 1e-12);
+  assert.deepEqual(model.promptWeights, [1 / 16, 1 / 16, 1 / 8, 1 / 8]);
+  const ranks = [[0, 2], [1, 3]];
+  const localWeightedSums = ranks.map(indices => indices.reduce((sum, index) => sum + model.rows[index].length * model.rows[index].mean * model.promptWeights[index], 0));
+  const averagedScaled = localWeightedSums.reduce((sum, local) => sum + 2 * local, 0) / 2;
+  assert.ok(Math.abs(averagedScaled - model.promptMean) < 1e-12);
+  const wrongLocalMeans = ranks.map(indices => indices.reduce((sum, index) => sum + model.rows[index].length * model.rows[index].mean, 0) / indices.reduce((sum, index) => sum + model.rows[index].length, 0));
+  assert.ok(Math.abs(wrongLocalMeans.reduce((sum, value) => sum + value, 0) / 2 - 0.65) < 1e-12);
 });
 
 test('manual controls, scrubber and changed parameters remain tied to the numerical model', () => {
@@ -114,6 +197,24 @@ test('manual controls, scrubber and changed parameters remain tied to the numeri
   assert.equal(controller.state.step, 2);
   click('[data-study-restart]');
   assert.equal(controller.state.step, 0);
+});
+
+test('new numerical controls reach model results and keep later parameter updates empty', () => {
+  for (const kind of ['chunk', 'transfer', 'speculation', 'gradient', 'filtering']) {
+    const {figure, controller, click, window} = harness(kind);
+    const parameter = figure.querySelector('[data-study-parameter]');
+    parameter.value = String(STUDIES[kind].parameter.max);
+    parameter.dispatchEvent(new window.Event('input'));
+    while (controller.state.step < STUDIES[kind].steps.length - 1) click('[data-study-next]');
+    assert.equal(controller.state.running, false);
+    assert.doesNotMatch(figure.textContent, /NaN|Infinity|undefined/);
+    if (kind === 'chunk') assert.match(figure.textContent, new RegExp(chunkBudget(16384).time.toFixed(4).replace('.', '\\.')));
+    if (kind === 'gradient') assert.match(figure.textContent, new RegExp(outputUpdate(0.5).probability.toFixed(4).replace('.', '\\.')));
+  }
+  assert.doesNotMatch(sceneFrame('gradient', 0).markup, /0\.1878/);
+  assert.doesNotMatch(sceneFrame('gradient', 4).markup, /-0\.0528/);
+  assert.match(sceneFrame('gradient', 5).markup, /-0\.0528/);
+  assert.match(sceneFrame('filtering', 2).markup, /e-16/);
 });
 
 test('playback preserves SVG nodes during travel, pauses, resumes, and stops at the result', () => {
@@ -187,6 +288,9 @@ test('both prototypes have working reading entry points, references, and Foundat
     assert.ok(document.querySelector('a[href="#introduction"]'));
     assert.ok(document.querySelector('link[href="../foundations/neobrutalism.css"]'));
     assert.ok(document.querySelector('button[data-study-open]'));
+    assert.equal(document.querySelectorAll('nav[aria-label="Contents"] details[data-contents-chapter]').length, 8);
+    assert.ok(document.querySelectorAll('nav[aria-label="Contents"] a.toc-subsection').length >= 10);
+    assert.equal(document.querySelectorAll('a.toc-subsection[href^="#figure-"]').length, 0);
     assert.ok(document.querySelector('a[href="../miscellaneous/"]'));
     assert.ok(document.querySelectorAll('a[href^="../miscellaneous/#"]').length >= 4);
     assert.doesNotMatch(html, /11\/3|7\/3|One supervised parameter update/);

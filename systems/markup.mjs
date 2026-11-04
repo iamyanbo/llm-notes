@@ -3,7 +3,8 @@ import {studyFigure} from './views.mjs';
 
 export const escape = value => String(value).replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 export const p = text => `<p>${text}</p>`;
-export const math = source => katex.renderToString(source, {throwOnError: true});
+export const heading = (id, title) => `<h3 id="${escape(id)}">${escape(title)}</h3>`;
+export const math = source => katex.renderToString(String(source), {throwOnError: true});
 export const equation = source => katex.renderToString(source, {displayMode: true, throwOnError: true});
 export const study = kind => studyFigure(kind);
 export const source = (label, url) => `<p class="source-note"><a href="${escape(url)}">${escape(label)} ↗</a></p>`;

@@ -1,3 +1,4 @@
+import {servingDepth} from './depth.mjs';
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
 const deployment = 'https://github.com/deepseek-ai/DeepInfer/blob/main/doc/inference_deployment_qa.md';
@@ -31,6 +32,7 @@ export const serving = {
         source('The model and harness loop', misc+'#harnesses') +
         p('We can measure a model call from its arrival to its first returned token, then measure the gaps between later tokens. We can also measure the repair from the original instruction to a checked result. Tool execution and dependencies between calls contribute to this second clock. Improving one decode interval helps only the portion of the repair that depends on it.') +
         definition('1.1', 'A <strong>session</strong> is the continuing unit of work whose requests share a task and accumulated state. A <strong>request</strong> is one invocation of the model service. The session’s completion criterion and the request’s timing boundaries must be stated when measuring either.') +
+        servingDepth['one-request'] +
         p('A plausible first design sends every returning call to the worker that handled the previous one. This preserves locality as long as the state survives there. Before adopting that rule, we need to account for the memory occupied while the test is running.'),
     },
     {
@@ -46,6 +48,7 @@ export const serving = {
         p('In llm-d’s GLM-5.2 study, one 64-GPU run writes roughly 5 TB to CPU cache over 24 minutes and performs no restores because active prefixes still fit in HBM. Its provisioned NVMe tier receives no reads in those measurements.') +
         source('Observed cache-tier use', measured) +
         p('A configured tier can therefore be doing preparatory work before its additional capacity is needed. To judge it, we would record writes, restores, evictions, and avoided recomputation as concurrent sessions increase. A capacity diagram alone would hide when the tier begins to help.') +
+        servingDepth['memory-and-work'] +
         p('The test has now finished. Our session returns alongside others. Whether the prefix survived will affect both its own work and the queue behind it.'),
     },
     {
@@ -58,6 +61,7 @@ export const serving = {
         p('In llm-d’s controlled restore-versus-recompute comparison, the no-offload configuration reports about 5.7 seconds of server processing once work begins, while client time to first token reaches 59 seconds with 97 requests queued. These aggregate timings are reported separately. Their difference does not identify an individual request’s queue time.') +
         source('Client timing and server timing in the measured experiment', measured) +
         p('For our repair, a fast output stream would not remove the wait before it started. A useful trace records request arrival, admission, prefix restoration or recomputation, first output, and completion. We can then ask which interval changed when a deployment improved.') +
+        servingDepth['arriving-requests'] +
         p('Continuous batching supplies one mechanism for sharing execution. The existing scheduling essay works through its admission and completion arithmetic. Here the next question is placement. If the worker holding our prefix is busy, how long should we wait for it?') +
         source('Review continuous batching and completion latency', misc+'#request-scheduling'),
     },
@@ -81,6 +85,7 @@ export const serving = {
         source('Dynamo cache events and routing visibility', offloading) +
         p('Once restoration becomes common, storage bandwidth can limit arrivals. Multiply bytes restored per request by requests per second to estimate the required read rate. DualPath studies a deployment where prefill workers’ storage interfaces saturate and adds a loading route through decode workers and the compute network.') +
         source('DualPath’s alternative KV-loading path', 'https://arxiv.org/abs/2602.21548') +
+        servingDepth['returning-prefixes'] +
         p('We now have a placement rule involving queues, state, and transfers. Giving those destinations physical locations exposes the links over which the transfers must travel.'),
     },
     {
@@ -96,6 +101,7 @@ export const serving = {
         source('Physical expert copies and dispatch-time balancing', 'https://www.lmsys.org/blog/2026-06-26-waterfill-lplb/') +
         p('Separating prefill from decode gives each pool its own resource allocation. It adds the transfer between them. DeepSeek’s deployment description uses different expert-parallel group sizes for the two phases, and persistent cache storage adds another path. The relevant comparison includes the execution saved and the traffic introduced.') +
         source('DeepSeek production placement and cache paths', deployment) +
+        servingDepth['physical-cluster'] +
         p('Our repair has reached decode. It can now trade additional work within a step for a chance to advance several tokens at once.'),
     },
     {
@@ -109,6 +115,7 @@ export const serving = {
         p('That saving must appear in the executed batch. If shortened proposals are padded back to the old shape, the logical budget shrinks while much of the device work remains. SGLang’s DSpark integration uses compact variable-length verification and matching execution graphs to make trimming reduce execution.') +
         source('DSpark verification budgets and executed shapes', 'https://www.lmsys.org/blog/2026-07-06-dspark-sglang/') +
         p('A timing trace should also include CPU preparation between device steps. Metadata construction and decisions that await sampled results can leave the GPU idle. Overlap can hide independent preparation. A decision requiring the latest result still has to wait for it. The useful optimization depends on which dependency lies on our session’s path.') +
+        servingDepth['verification-budget'] +
         p('Once the assistant launches several investigations, those paths form a graph. Finishing one fast stream will no longer be enough to finish the repair.'),
     },
     {
@@ -123,6 +130,7 @@ export const serving = {
         p('Reconstruction can itself use an approximation. DeepInfer documents rebuilding sliding-window state from the latest 128 tokens with a truncated replay window. It identifies that rebuilt cache as approximate, while reusing the separate block cache.') +
         source('DeepInfer bounded replay and its cache policy', deployment) +
         p('To assess that choice for our repair, we would compare task success and output behavior after the same interruptions, then record recovery time and work. Exact reuse, recomputation, and bounded reconstruction provide different experimental conditions. The model revision and cache policy are part of the service being tested.') +
+        servingDepth['operating-service'] +
         p('Adding machines also has a delay. Weights must become available, execution must be prepared, and useful prefixes may still live on older workers. A freshly allocated replica enters with a different state. Scaling based on uncached prefill work and active decode demand gives a more direct account of those needs than one fleet-wide utilization percentage.'),
     },
     {
@@ -144,7 +152,7 @@ export const serving = {
         source('DeepInfer benchmark counters', 'https://github.com/deepseek-ai/DeepInfer/blob/main/examples/README.md') +
         p('The provider study can carry these probes through model APIs such as OpenAI, Anthropic, Google, and DeepSeek; open-model hosts such as Together, Fireworks, DeepInfra, and FriendliAI; deployment platforms such as Baseten and Modal; and accelerator services such as Groq and Cerebras. For each tested endpoint, record its exact model, access tier, region, template, settings, prices, and observation date. Engine assignments that a provider has not disclosed remain unknown.') +
         source('Hosted-provider starting points', 'https://huggingface.co/docs/inference-providers/index') +
-        p('For dedicated capacity, divide the full cost over the observation period by successful qualifying tasks, including idle periods and failed attempts. For an API, retain the billable categories across the same tasks. The earlier question about a cached prefix now reaches the final account through waiting time, transfers, repeated work, and the result the service delivered.'),
+        servingDepth['measurements-and-providers'],
     },
   ],
   sources: [
@@ -157,5 +165,7 @@ export const serving = {
     ['DualPath', 'https://arxiv.org/abs/2602.21548'],
     ['SGLang expert dispatch', 'https://www.lmsys.org/blog/2026-06-26-waterfill-lplb/'],
     ['SGLang DSpark', 'https://www.lmsys.org/blog/2026-07-06-dspark-sglang/'],
+    ['vLLM scheduling and chunked prefill', 'https://docs.vllm.ai/en/latest/configuration/optimization/'],
+    ['NVIDIA matrix multiplication performance guide', 'https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html'],
   ],
 };

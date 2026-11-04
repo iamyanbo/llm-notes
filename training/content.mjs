@@ -1,3 +1,4 @@
+import {trainingDepth} from './depth.mjs';
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
 const mimo = 'https://arxiv.org/html/2610.11959v1';
@@ -36,6 +37,7 @@ export const training = {
         p('Imagine that our initial model rarely emits a valid test invocation. Rewarding a completed repair can leave almost every attempt at zero, even if successful repairs would be very valuable. Demonstrations can make the action format available before the verifier has enough useful variation to compare.') +
         p('Rufus-Air places supervised fine-tuning before successive reasoning, coding, instruction-following, agent, and preference stages. The authors motivate their order through the capabilities already available and the reliability of rewards. Later stages update the same parameters, so earlier gains still need measurement.') +
         source('Rufus-Air stage order and its limits', rufus) +
+        trainingDepth['pretraining-and-midtraining'] +
         p('A stage name therefore leaves several questions open. Which exact tokens are targets? Which observations are context? How are examples weighted? The repair conversation lets us inspect those choices before we return to feedback from tests.'),
     },
     {
@@ -53,7 +55,8 @@ export const training = {
         p('Backpropagation now follows the selected losses into the shared parameters. The gradient-descent construction is the one already developed in the learning essay. What we have added is a precise account of the predictions whose gradients enter it.') +
         source('Review parameter updates and loss behavior', misc+'#learning-efficiency') +
         p('This mask is one illustrative supervised construction. Rufus-Air documents assistant-only supervised loss. The exact template, selected positions, and reduction must be taken from the particular recipe being reproduced.') +
-        source('Rufus-Air supervised setup', rufus),
+        source('Rufus-Air supervised setup', rufus) +
+        trainingDepth['one-update'],
     },
     {
       id: 'supervised-data', title: 'Turning a repair into a training task',
@@ -71,6 +74,7 @@ export const training = {
         p('Task construction can accidentally expose its answer. A committed solution, generated cache, or accessible grading artifact can provide a shortcut. A policy repeatedly optimized for the score has reason to find such paths. The environment and verifier therefore belong in the training specification.') +
         p('The MiMo public release supplies different task environments, verifiers, harness integrations, and launch scripts. Its code-task documentation calls for anti-hack cleanup when preparing the environment.') +
         source('Released environments and preparation settings', code) +
+        trainingDepth['supervised-data'] +
         p('For the numerical development, give a completed repair return 1 if it passes our chosen tests and 0 otherwise. This is a simplified binary scorer. We can now ask what four attempts at the same task tell the learner.'),
     },
     {
@@ -82,7 +86,7 @@ export const training = {
         equation(String.raw`\bar R=\frac{1}{G}\sum_{i=1}^{G}R_i,\qquad A_i=R_i-\bar R.`) +
         p('We can associate a successful attempt’s positive advantage with its generated token log probabilities. Increasing those log probabilities locally favors the sampled actions. A negative coefficient reverses the local direction. The episode’s outcome has supplied a way to weight predictions without prescribing a complete reference answer.') +
         p('If every return is equal, these differences are zero. The group consumed generation and grading work, but the mean-only baseline provides no distinction within it. A richer scorer can distinguish different successful repairs, and a collection policy can seek tasks on which attempts vary. Any such change also changes the data or signal used by the learner.') +
-        '<h3>Keep the probability recorded when the action was sampled</h3>' +
+        '<h3 id="sampling-probability-record">Keep the probability recorded when the action was sampled</h3>' +
         p('Our successful edit was generated before the latest update. For one of its tokens, suppose the rollout model assigned probability '+math('q=0.1')+'. The learner now assigns the same token probability '+math('p=0.12')+' under its recorded prefix. Their ratio is '+math('r=p/q=1.2')+'. It describes how the token’s probability has changed since collection.') +
         p('MiMo uses per-token learner-to-rollout probability ratios held fixed during differentiation. It masks ratios outside separately controlled intervals for positive and negative advantages, initialized to [0.2, 5], and uses prompt-mean aggregation.') +
         source('MiMo policy optimization rule', mimo) +
@@ -91,6 +95,7 @@ export const training = {
         p('Move the learner probability to 0.6 in the figure. The ratio becomes six, outside the initial positive interval, and the mask becomes zero. The term supplies no gradient under that mask. The example exposes the rule’s boundary while keeping the sampled action and its recorded probability fixed.') +
         p('Writing '+math(String.raw`\operatorname{sg}`)+' for “use this value without differentiating through it,” the term we have examined is') +
         equation(String.raw`J_{\mathrm{token}}=\operatorname{sg}(M r A)\log p,\qquad \frac{\partial J_{\mathrm{token}}}{\partial\log p}=M r A.`) +
+        trainingDepth['rewarded-attempts'] +
         p('A full training step aggregates many such terms and may modify the episode advantages. This example isolates one positive-advantage coefficient at the reported initial bounds. It does not reproduce all grading, masking, entropy control, or aggregation choices in the run. To evaluate the complete update, those choices must be specified together.'),
     },
     {
@@ -103,6 +108,7 @@ export const training = {
         p('For our repair, a test failure after a valid run is an observed outcome. A test worker disappearing before it reports a result leaves that intended outcome unknown. Giving both the same zero return can alter the group mean and penalize actions for an infrastructure event. Termination reasons let the training pipeline apply its actual policy for missing outcomes.') +
         p('The same distinction matters within a group. If one of four attempts is aborted, silently treating it as a failed repair leaves a four-member baseline. Excluding it creates a different group and denominator. A reproducible record states which attempts were included, and whether the group was discarded or replenished.') +
         p('Tool observations remain context for later actions. Loss masks determine where feedback applies. A policy version identifies the weights that generated a segment. The episode record joins these pieces so that the learner can compute the quantity the objective asks for.') +
+        trainingDepth['agent-experience'] +
         p('Once records are valid, we still need to collect the intended mixture of them. Our code repair may take much longer than another task in the same run.'),
     },
     {
@@ -118,6 +124,7 @@ export const training = {
         p('MiMo reports 1,568 prompts with sixteen rollouts each, or 25,088 trajectories, and uses a Sample Mixer to adapt collection to durations and filtering. Its failure analysis describes early short completions biasing length estimates and exhausting KV pools.') +
         source('MiMo batch settings, Sample Mixer, and failure analysis', mimo) +
         p('The first completions are a selected sample of the work in flight. Measuring only those can underestimate how much memory the unfinished episodes will require. For our repair source, a scheduler should retain information about running work as well as completed work before revising its length budget.') +
+        trainingDepth['collecting-a-mixture'] +
         p('Faster serving can improve collection. It can also change which source finishes first. The batch composition must therefore be checked after a serving change, even if the task-selection probabilities were left alone.'),
     },
     {
@@ -137,6 +144,7 @@ export const training = {
         p('Precision and kernels can affect that alignment. The rollout engine and learner may perform different reductions or use different formats. A small numerical change can alter an MoE choice or the set of tokens considered by sampling. Probability comparisons need the corresponding implementation details, as well as a checkpoint name.') +
         p('Rufus-Air describes replaying sampled expert choices in the training forward pass. That intervention preserves a recorded route for the calculation being compared. Freezing router parameters and replaying a route answer different operational questions.') +
         source('Rufus-Air routing replay', rufus) +
+        trainingDepth['learner-and-rollout'] +
         p('The serving essay follows retained state while a deployed model answers requests. Here that state participates in a changing-policy experiment. The lifetime of a reusable prefix ends at a different boundary when the model weights change.') +
         source('Follow session state through a serving cluster', '../serving/#memory-and-work'),
     },
@@ -149,7 +157,7 @@ export const training = {
         p('Xiaomi’s tool-call repetition investigation supplies a concrete example. It traced problematic calls across RL checkpoints and examined a per-turn flooding penalty triggered above 32 calls. Lowering the threshold to eight in a separate experiment suppressed flooding, with limited generalization to other repetition cases. Flooding and exact duplicate calls were measured separately.') +
         source('MiMo’s post-release repetition investigation', repetition) +
         p('A task score can therefore improve while a costly behavior remains weakly constrained. For our repair, we would inspect repeated commands, unnecessary files touched, failed tool calls, and time spent reaching the passing test. Those observations help identify which part of the scoring procedure needs investigation.') +
-        '<h3>Read the released experiment before choosing a reproduction</h3>' +
+        '<h3 id="released-experiment">Read the released experiment before choosing a reproduction</h3>' +
         p('The public MiMo fork provides a distilled Qwen-based 9B training checkpoint, five environment families, and launch scripts. Its code path combines a harness, model gateway, trajectory capture, and a verifier. Reproducing that released experiment requires their versions and configuration together.') +
         source('MiMo released training framework and smaller-model recipe', code) +
         table(['Artifact to preserve', 'Question it lets us answer'], [
@@ -160,7 +168,7 @@ export const training = {
           ['Held-out tasks and per-checkpoint results', 'Which gains and regressions survived evaluation?'],
         ], 'A reproduction record for the selected experiment') +
         p('The smaller released run and the production-scale report have different starting models and resource requirements. A reduced experiment can test a particular mechanism, such as masking or task collection, when those choices are stated. Its observed result then belongs to that configuration.') +
-        p('A reproduction can preserve the first batch’s raw records and calculated coefficients alongside the checkpoint it produces. Another reader can then inspect how the selected episodes entered the update before comparing the resulting task behavior.'),
+        trainingDepth['reading-a-run'],
     },
   ],
   sources: [
@@ -170,5 +178,7 @@ export const training = {
     ['MiMo released RL environments', 'https://huggingface.co/datasets/XiaomiMiMo/MiMo-V2.6-RL-oss'],
     ['MiMo distilled training checkpoint', 'https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Distill-Qwen-9B'],
     ['MiMo tool-call repetition investigation', repetition],
+    ['Pinned prompt-loss implementation', 'https://github.com/XiaomiMiMo/verl/blob/79090e58195e80a9cfe251c95ae7a78a2132b6e2/verl/trainer/ppo/core_algos.py'],
+    ['Pinned public code-training launch script', 'https://github.com/XiaomiMiMo/verl/blob/79090e58195e80a9cfe251c95ae7a78a2132b6e2/scripts/code/train.sh'],
   ],
 };

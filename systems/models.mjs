@@ -77,7 +77,126 @@ export function mixtureSchedule(tick = 0, balanced = true) {
   };
 }
 
+export function chunkBudget(prefix = 2048) {
+  const budget = 20;
+  const decodeRows = 4;
+  const decodeContext = 1024;
+  const fixed = 2;
+  const linear = 0.02;
+  const pairCost = 0.00002;
+  const pairsFor = chunk => prefix * chunk + chunk * (chunk + 1) / 2;
+  const timeFor = chunk => fixed + linear * (chunk + decodeRows) + pairCost * (pairsFor(chunk) + decodeRows * decodeContext);
+  let lower = 0;
+  let upper = 2048;
+  while (lower < upper) {
+    const middle = Math.ceil((lower + upper) / 2);
+    if (timeFor(middle) <= budget) lower = middle;
+    else upper = middle - 1;
+  }
+  return {prefix, budget, decodeRows, decodeContext, fixed, linear, pairCost, chunk: lower, pairs: pairsFor(lower), time: timeFor(lower), nextTime: timeFor(lower + 1), fixedChunkTime: timeFor(128)};
+}
+
+export function kvTransfer(bandwidth = 16, tokens = 32768) {
+  const layers = 78;
+  const coordinates = 576;
+  const bytesPerCoordinate = 1;
+  const bytes = tokens * layers * coordinates * bytesPerCoordinate;
+  const gib = bytes / 2 ** 30;
+  const fixedMs = 1;
+  const transferMs = fixedMs + gib / bandwidth * 1000;
+  return {tokens, layers, coordinates, bytesPerCoordinate, bytes, gib, bandwidth, fixedMs, transferMs};
+}
+
+export function specAllocation(extraA = 2) {
+  const a = Math.max(0, Math.min(4, Math.round(extraA)));
+  const b = 4 - a;
+  const accepted = (probability, count) => Array.from({length: count}, (_, index) => probability ** (index + 1)).reduce((sum, value) => sum + value, 0);
+  const outputA = 1 + accepted(0.9, a);
+  const outputB = 1 + accepted(0.5, b);
+  const compactMs = 10 + 2 * (a + b);
+  const paddedMs = 10 + 2 * 2 * Math.max(a, b);
+  return {a, b, outputA, outputB, total: outputA + outputB, compactMs, paddedMs, compactRate: (outputA + outputB) / compactMs * 1000, paddedRate: (outputA + outputB) / paddedMs * 1000};
+}
+
+export function outputUpdate(rate = 0.1) {
+  const hidden = [1, 2];
+  const probabilities = [0.12, 0.88];
+  const coefficient = policyWeight().weight;
+  const weights = [[Math.log(probabilities[0] / probabilities[1]), 0], [0, 0]];
+  const logitGradient = [coefficient * (1 - probabilities[0]), -coefficient * probabilities[1]];
+  const gradient = hidden.map(feature => logitGradient.map(value => feature * value));
+  const updated = weights.map((row, i) => row.map((value, j) => value + rate * gradient[i][j]));
+  const logits = [0, 1].map(column => hidden.reduce((sum, feature, row) => sum + feature * updated[row][column], 0));
+  const probability = 1 / (1 + Math.exp(logits[1] - logits[0]));
+  return {hidden, probabilities, coefficient, weights, logitGradient, gradient, rate, updated, logits, probability};
+}
+
+export function qualityAdvantages(weakQuality = 0.2, cap = 1.25) {
+  const baseline = groupAdvantages().advantages;
+  const qualities = [weakQuality, 1];
+  const positiveMass = baseline[1] + baseline[2];
+  const retainedMass = baseline[1] * qualities[0] + baseline[2] * qualities[1];
+  const uncappedScale = positiveMass / retainedMass;
+  const scale = Math.min(cap, uncappedScale);
+  const adjusted = [baseline[0], baseline[1] * qualities[0] * scale, baseline[2] * qualities[1] * scale, baseline[3]];
+  const mean = adjusted.reduce((sum, value) => sum + value, 0) / adjusted.length;
+  return {baseline, qualities, positiveMass, retainedMass, uncappedScale, cap, scale, adjusted, mean, centered: adjusted.map(value => value - mean)};
+}
+
+export function groupFilter(success = 0.9, count = 16) {
+  const allPass = success ** count;
+  const allFail = (1 - success) ** count;
+  const usable = 1 - allPass - allFail;
+  return {success, count, allPass, allFail, usable, groupsPerAccepted: 1 / usable, rolloutsPerAccepted: count / usable};
+}
+
+export function reductionExample() {
+  const rows = [
+    {prompt: 'A', length: 2, mean: 0.2}, {prompt: 'A', length: 6, mean: 1},
+    {prompt: 'B', length: 2, mean: 0.6}, {prompt: 'B', length: 2, mean: 0.6},
+  ];
+  const tokens = rows.reduce((sum, row) => sum + row.length, 0);
+  const totals = new Map(['A', 'B'].map(prompt => [prompt, rows.filter(row => row.prompt === prompt).reduce((sum, row) => sum + row.length, 0)]));
+  return {
+    rows, tokens,
+    tokenMean: rows.reduce((sum, row) => sum + row.length * row.mean, 0) / tokens,
+    sequenceMean: rows.reduce((sum, row) => sum + row.mean, 0) / rows.length,
+    promptMean: rows.reduce((sum, row) => sum + row.length * row.mean / (totals.size * totals.get(row.prompt)), 0),
+    promptWeights: rows.map(row => 1 / (totals.size * totals.get(row.prompt))),
+  };
+}
+
 export const STUDIES = {
+  chunk: {
+    title: 'Choose a chunk from the whole step’s work',
+    note: 'Authored timing model in milliseconds. One full-attention layer’s pair count is a proxy with fixed fitted coefficients, not a GPU measurement. Four decode rows of context 1024 share the 20 ms budget. The search is capped at 2048 new prefill tokens.',
+    parameter: {label: 'Cached prefix length', unit: 'tokens', min: 2048, max: 16384, step: 2048, value: 2048},
+    steps: ['Inspect the existing context and the budget', 'Count comparisons made by the chosen chunk', 'Include four active decode rows', 'Evaluate the predicted step time', 'Check that one more token would exceed the budget'],
+  },
+  transfer: {
+    title: 'From a cache entry count to a transfer time',
+    note: 'Chosen 32768-token prefix with 78 layers and 576 one-byte coordinates per layer. The geometry follows the discussed latent cache example. Effective bandwidth and 1 ms fixed overhead are illustrative, with no overlap.',
+    parameter: {label: 'Effective transfer bandwidth', unit: 'GiB/s', min: 2, max: 32, step: 2, value: 16},
+    steps: ['State the cache geometry', 'Count the stored bytes', 'Divide by effective bandwidth', 'Include the fixed transfer cost'],
+  },
+  speculation: {
+    title: 'Allocate four proposals and count the work executed',
+    note: 'Chosen conditional acceptance probabilities 0.9 and 0.5. Each request commits a base token plus its accepted prefix. Costs are 10 ms base plus 2 ms per executed proposal row. Compact and padded layouts execute different row counts.',
+    parameter: {label: 'Proposals assigned to request A', unit: 'of 4', min: 0, max: 4, step: 1, value: 2},
+    steps: ['Allocate the same four proposal positions', 'Count expected committed output', 'Count compact and padded execution rows', 'Compare committed tokens per second'],
+  },
+  gradient: {
+    title: 'One token changes a two-feature output matrix',
+    note: 'Authored two-token readout with h = (1, 2), initial probabilities (0.12, 0.88), and fixed coefficient 0.6 from the previous example. Only the displayed output weights are updated by gradient ascent. Other model parameters are held fixed.',
+    parameter: {label: 'Learning rate', unit: '%', min: 0, max: 50, step: 5, value: 10},
+    steps: ['Inspect the hidden row and current weights', 'Differentiate the token log probability', 'Form the first row of the weight gradient', 'Form the second row of the weight gradient', 'Update weight W₀₀', 'Update weight W₀₁', 'Update weight W₁₀', 'Update weight W₁₁', 'Compute the edit logit', 'Compute the other logit', 'Normalize the new token probabilities'],
+  },
+  filtering: {
+    title: 'How often does a group contain useful binary variation?',
+    note: 'Independent Bernoulli attempts at one chosen success probability. A usable group contains both a pass and a failure. This isolates binary mean-only feedback; richer grading can change the usability rule.',
+    parameter: {label: 'Per-attempt success probability', unit: '%', min: 1, max: 99, step: 1, value: 90},
+    steps: ['Compare groups of four and sixteen attempts', 'Count all-pass groups', 'Count all-fail groups', 'Keep the mixed-outcome groups', 'Count expected rollouts per accepted group'],
+  },
   request: {
     title: 'A coding session across model turns',
     note: 'One illustrative session. The tool wait is outside model execution; retained state can survive between turns. Paths are schematic.',
@@ -134,10 +253,14 @@ export const STUDIES = {
 };
 
 export function studyDuration(kind, step = 0) {
+  if (kind === 'gradient') return 24000;
+  if (kind === 'chunk' && [1, 3].includes(step)) return 24000;
+  if (kind === 'transfer' && step === 1) return 28000;
+  if (kind === 'speculation' && [2, 3].includes(step)) return 24000;
   if (kind === 'mask' && step === 4) return 24000;
   if (kind === 'advantage' && step === 1) return 18000;
   if (kind === 'routing' && step === 4) return 18000;
-  return ['mask', 'policy', 'advantage', 'residency', 'queue'].includes(kind) ? 12000 : 8000;
+  return ['mask', 'policy', 'advantage', 'residency', 'queue', 'chunk', 'transfer', 'speculation', 'filtering'].includes(kind) ? 12000 : 8000;
 }
 
 export function advanceStudy(kind, step) {

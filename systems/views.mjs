@@ -1,4 +1,4 @@
-import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule} from './models.mjs';
+import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, chunkBudget, kvTransfer, specAllocation, outputUpdate, groupFilter} from './models.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 const number = value => Number.isInteger(value) ? String(value) : value.toFixed(4);
@@ -15,7 +15,8 @@ function block(x, y, width, title, detail, active) {
 }
 
 function frame(kind, height, body, motion) {
-  const packet = motion ? `<g data-packet="" aria-hidden="true"><rect x="-48" y="-18" width="96" height="36" rx="4"/><text x="0" y="6">${escape(motion.label ?? motion.segments[0].label)}</text></g>` : '';
+  const packetWidth = motion ? Math.max(96, ...[motion.label, ...(motion.segments || []).map(segment => segment.label)].filter(value => value !== undefined).map(value => String(value).length * 8 + 24)) : 96;
+  const packet = motion ? `<g data-packet="" aria-hidden="true"><rect x="${-packetWidth/2}" y="-18" width="${packetWidth}" height="36" rx="4"/><text x="0" y="6">${escape(motion.label ?? motion.segments[0].label)}</text></g>` : '';
   const markup = `<svg xmlns="http://www.w3.org/2000/svg" class="systems-scene" viewBox="0 0 960 ${height}" role="img" aria-labelledby="scene-${kind}-title"><title id="scene-${kind}-title">${escape(STUDIES[kind].title)}</title><defs><marker id="arrow-${kind}" markerWidth="9" markerHeight="8" refX="8" refY="4" orient="auto"><path d="M0 0L8 4L0 8" fill="currentColor"/></marker></defs>${body}${packet}</svg>`;
   return {markup, motion};
 }
@@ -279,7 +280,181 @@ function mixerFrame(step) {
   return frame('mixer', 520, body, step ? {points: [[70, 375], [70, 450], [680, 450]], label: `t = ${step}`} : null);
 }
 
-const renderers = {request: requestFrame, residency: residencyFrame, queue: queueFrame, routing: routingFrame, cluster: clusterFrame, training: trainingFrame, mask: maskFrame, policy: policyFrame, advantage: advantageFrame, mixer: mixerFrame};
+function chunkFrame(step, options) {
+  const model = chunkBudget(options.value);
+  const cross = model.prefix * model.chunk;
+  const internal = model.chunk * (model.chunk + 1) / 2;
+  const decodePairs = model.decodeRows * model.decodeContext;
+  let body = text(28, 32, 'Authored cost: 2 ms fixed + 0.02 ms per new row + 0.00002 ms per query–key pair.', 'scene-note');
+  body += cell(28, 105, 245, 'Cached positions L', model.prefix);
+  body += cell(345, 105, 245, 'Candidate chunk c', model.chunk);
+  body += cell(690, 105, 240, 'Whole-step budget', '20 ms');
+  body += cell(28, 300, 245, 'New queries × old keys: cL', step >= 1 ? cross : null, {warm:true, arrived:step===1});
+  body += cell(345, 300, 245, 'Within-chunk pairs: c(c+1)/2', step >= 1 ? internal : null, {warm:true, arrived:step===1});
+  body += cell(690, 300, 240, 'Decode pairs: 4 × 1024', step >= 2 ? decodePairs : null, {warm:true, arrived:step===2});
+  if(step>=3){
+    body += text(28,435,`Fixed: ${model.fixed} ms`,'scene-note');
+    body += text(345,435,`New rows: ${(model.linear*(model.chunk+model.decodeRows)).toFixed(4)} ms`,'scene-note');
+    body += text(690,435,`Pairs: ${(model.pairCost*(model.pairs+decodePairs)).toFixed(4)} ms`,'scene-note');
+    if(step===3)body+=text(230,485,'+','operator');
+  }
+  if(step===1)body+=text(290,248,'×','operator');
+  body += cell(28, 515, 425, 'Predicted whole-step time', step >= 3 ? `${model.time.toFixed(4)} ms` : null, {warm:true, arrived:step===3});
+  if(step===4)body += `<g data-arrival="">${text(520,545,`c + 1 = ${model.chunk+1}: ${model.nextTime.toFixed(4)} ms`,'result-note')}${text(520,580,'The next integer exceeds the 20 ms budget.','scene-note')}</g>`;
+  const motions = {
+    1:{segments:[{points:[[150,143],[300,235]],label:model.prefix,start:.03,end:.17},{points:[[467,143],[300,235]],label:model.chunk,start:.22,end:.36},{points:[[300,235],[150,338]],label:cross,start:.41,end:.55},{points:[[467,143],[467,235]],label:`${model.chunk} × ${model.chunk+1} / 2`,start:.6,end:.73},{points:[[467,235],[467,338]],label:internal,start:.77,end:.86}]},
+    2:{points:[[810,230],[810,338]],label:decodePairs},
+    3:{segments:[{points:[[100,430],[240,470]],label:model.fixed.toFixed(2),start:.05,end:.25},{points:[[467,430],[240,470]],label:(model.linear*(model.chunk+model.decodeRows)).toFixed(4),start:.32,end:.52},{points:[[810,430],[810,470],[240,470]],label:(model.pairCost*(model.pairs+decodePairs)).toFixed(4),start:.59,end:.77},{points:[[240,470],[240,553]],label:model.time.toFixed(4),start:.8,end:.86}]},
+    4:{points:[[467,143],[605,143],[605,530]],label:model.chunk+1},
+  };
+  return frame('chunk',625,body,motions[step]||null);
+}
+
+function transferFrame(step, options) {
+  const model = kvTransfer(options.value);
+  let body = text(28,32,'Coordinate storage only. Metadata and additional state require their own accounting.','scene-note');
+  for(const [x,label,value] of [[28,'Prefix tokens',model.tokens],[270,'Cached layers',model.layers],[510,'Coordinates / layer',model.coordinates],[750,'Bytes / coordinate',1]])body+=cell(x,105,180,label,value);
+  body += cell(28,300,525,'Stored bytes = tokens × layers × coordinates × bytes',step>=1?model.bytes.toLocaleString('en-US'):null,{warm:true,arrived:step===1});
+  body += cell(650,300,280,'Bytes / 2³⁰',step>=1?`${model.gib.toFixed(4)} GiB`:null,{warm:true,arrived:step===1});
+  body += cell(28,510,245,'Effective bandwidth',`${model.bandwidth} GiB/s`);
+  body += cell(345,510,245,'1000 × GiB / bandwidth',step>=2?`${(model.transferMs-1).toFixed(4)} ms`:null,{warm:true,arrived:step===2});
+  body += cell(690,510,240,'Add 1 ms setup',step>=3?`${model.transferMs.toFixed(4)} ms`:null,{warm:true,arrived:step===3});
+  if(step===1){body+=text(330,248,'×','operator');body+=text(575,353,'÷ 2³⁰','row-label');}
+  const motions = {
+    1:{segments:[{points:[[118,143],[340,235]],label:model.tokens,start:.02,end:.12},{points:[[360,143],[340,235]],label:model.layers,start:.16,end:.26},{points:[[600,143],[340,235]],label:model.coordinates,start:.3,end:.4},{points:[[840,143],[340,235]],label:model.bytesPerCoordinate,start:.44,end:.54},{points:[[340,235],[290,338]],label:model.bytes,start:.58,end:.68},{points:[[290,338],[600,338]],label:model.bytes,start:.71,end:.78},{points:[[600,338],[790,338]],label:model.gib.toFixed(4),start:.81,end:.88}]},
+    2:{segments:[{points:[[790,338],[467,440]],label:model.gib.toFixed(4),start:.08,end:.4},{points:[[150,548],[467,440]],label:model.bandwidth,start:.48,end:.7},{points:[[467,440],[467,548]],label:(model.transferMs-1).toFixed(4),start:.76,end:.86}]},
+    3:{points:[[467,548],[810,548]],label:model.transferMs.toFixed(4)},
+  };
+  return frame('transfer',630,body,motions[step]||null);
+}
+
+function speculationFrame(step, options) {
+  const model = specAllocation(options.value);
+  let body = text(28,32,'Four proposal positions. A has conditional acceptance 0.9; B has 0.5. Both have one base token.','scene-note');
+  for(let index=0;index<4;index++){
+    const a=index<model.a;
+    body+=`<g class="scene-cell ${a?'':'warm'}"><rect x="${270+index*155}" y="100" width="130" height="65" rx="4"/>${text(335+index*155,142,a?'A':'B','cell-number')}</g>`;
+  }
+  body+=text(28,141,'Proposals assigned','row-label');
+  const terms=(probability,count)=>['1',...Array.from({length:count},(_,i)=>(probability**(i+1)).toFixed(4))].join(' + ');
+  body+=text(28,235,`A: ${terms(.9,model.a)}`,'scene-note');
+  body+=text(520,235,`B: ${terms(.5,model.b)}`,'scene-note');
+  body+=cell(28,270,425,'Expected committed output A',step>=1?model.outputA.toFixed(4):null,{warm:true,arrived:step===1});
+  body+=cell(520,270,410,'Expected committed output B',step>=1?model.outputB.toFixed(4):null,{warm:true,arrived:step===1});
+  if(step>=1)body+=text(28,405,`Total expected output = ${model.outputA.toFixed(4)} + ${model.outputB.toFixed(4)} = ${model.total.toFixed(4)}`,'scene-note');
+  body+=cell(28,450,425,`Compact: 10 + 2 × (${model.a} + ${model.b})`,step>=2?`${model.compactMs} ms`:null,{warm:true,arrived:step===2});
+  body+=cell(520,450,410,`Padded: 10 + 2 × 2 × max(${model.a}, ${model.b})`,step>=2?`${model.paddedMs} ms`:null,{warm:true,arrived:step===2});
+  if(step===3)body+=`<g data-arrival="">${text(28,610,`Compact ${model.compactRate.toFixed(2)} tokens/s`,'result-note')}${text(520,610,`Padded ${model.paddedRate.toFixed(2)} tokens/s`,'result-note')}</g>`;
+  const motions={
+    1:{segments:[{points:[[400,132],[240,308]],label:model.outputA.toFixed(4),start:.08,end:.42},{points:[[800,132],[725,308]],label:model.outputB.toFixed(4),start:.52,end:.86}]},
+    2:{segments:[{points:[[400,132],[480,200],[480,430],[240,430]],label:`${model.a} + ${model.b} rows`,start:.04,end:.21},{points:[[240,430],[240,488]],label:model.compactMs,start:.27,end:.43},{points:[[800,132],[900,132],[900,430],[725,430]],label:`2 × ${Math.max(model.a,model.b)} rows`,start:.5,end:.67},{points:[[725,430],[725,488]],label:model.paddedMs,start:.73,end:.86}]},
+    3:{segments:[{points:[[365,400],[240,560]],label:model.total.toFixed(4),start:.02,end:.13},{points:[[240,488],[240,560]],label:`÷ ${model.compactMs} ms`,start:.17,end:.28},{points:[[240,560],[240,600]],label:model.compactRate.toFixed(2),start:.32,end:.43},{points:[[365,400],[480,400],[480,560],[725,560]],label:model.total.toFixed(4),start:.5,end:.61},{points:[[725,488],[725,560]],label:`÷ ${model.paddedMs} ms`,start:.65,end:.76},{points:[[725,560],[725,600]],label:model.paddedRate.toFixed(2),start:.8,end:.9}]},
+  };
+  return frame('speculation',655,body,motions[step]||null);
+}
+
+function filteringFrame(step, options) {
+  const success=(options.value??90)/100;
+  const probability = value => value > 0 && value < 0.000001 ? value.toExponential(2) : value.toFixed(6);
+  let body=text(28,32,`Per-attempt success p = ${success.toFixed(2)}. Attempts are independent in this chosen model.`,'scene-note');
+  for(const [count,x] of [[4,28],[16,520]]){
+    const model=groupFilter(success,count);
+    body+=text(x,88,`Group size G = ${count}`,'section-label');
+    body+=cell(x,135,410,'All pass: pᴳ',step>=1?probability(model.allPass):null,{warm:true,arrived:step===1});
+    body+=cell(x,290,410,'All fail: (1 − p)ᴳ',step>=2?probability(model.allFail):null,{warm:true,arrived:step===2});
+    body+=cell(x,445,410,'Usable r = 1 − all pass − all fail',step>=3?model.usable.toFixed(6):null,{warm:true,arrived:step===3});
+    body+=cell(x,600,410,'Expected rollouts per accepted group: G / r',step>=4?model.rolloutsPerAccepted.toFixed(4):null,{warm:true,arrived:step===4});
+  }
+  if(!step)return frame('filtering',720,body,null);
+  const models=[groupFilter(success,4),groupFilter(success,16)];
+  const sourceY=[0,80,80,328,483][step];
+  const targetY=[0,173,328,483,638][step];
+  const values=models.map(model=>step===1?model.allPass:step===2?model.allFail:step===3?model.usable:model.rolloutsPerAccepted);
+  return frame('filtering',720,body,{segments:values.map((value,index)=>({points:[[233+index*492,sourceY],[233+index*492,targetY]],label:probability(value),start:.08+index*.44,end:.42+index*.44}))});
+}
+
+function matrixScene(x, y, label, values, visibleCells, arrivingCells) {
+  let body = text(x, y - 18, label, 'row-label');
+  values.forEach((row, i) => row.forEach((value, j) => {
+    const index = i * row.length + j;
+    body += `<g class="scene-cell warm"><rect x="${x+j*115}" y="${y+i*52}" width="108" height="46" rx="3"/>`;
+    if (visibleCells.includes(index)) body += `<g ${arrivingCells.includes(index)?'data-arrival=""':''}>${text(x+j*115+54,y+i*52+30,number(value),'matrix-number')}</g>`;
+    body += '</g>';
+  }));
+  return body;
+}
+
+function gradientFrame(step, options) {
+  const model = outputUpdate((options.value ?? 10) / 100);
+  let body = text(28,32,'Two hidden features and two possible tokens. Only this output matrix changes.','scene-note');
+  body += cell(28,115,110,'Hidden h₀',1);
+  body += cell(155,115,110,'Hidden h₁',2);
+  body += cell(28,235,110,'Fixed c',0.6);
+  body += cell(155,235,110,'P(edit)',0.12);
+  body += matrixScene(345,115,'W before · edit / other',model.weights,[0,1,2,3],[]);
+  body += matrixScene(690,115,'Logit gradient · edit / other',[model.logitGradient],step>=1?[0,1]:[],step===1?[0,1]:[]);
+  body += cell(28,380,235,'Learning rate η',model.rate);
+  body += matrixScene(345,380,'Weight gradient hᵀg',model.gradient,[0,1,2,3].filter(index=>step>=Math.floor(index/2)+2),[0,1,2,3].filter(index=>step===Math.floor(index/2)+2));
+  body += matrixScene(690,380,'W after = W + η × gradient',model.updated,[0,1,2,3].filter(index=>step>=index+4),[0,1,2,3].filter(index=>step===index+4));
+  body += matrixScene(28,620,'New logits h × W after',[model.logits],[0,1].filter(index=>step>=index+8),[0,1].filter(index=>step===index+8));
+  body += cell(690,620,240,'New P(edit)',step>=10?model.probability.toFixed(4):null,{warm:true,arrived:step===10});
+  let motion = null;
+  if (step === 1) {body+=text(480,240,'c × (1 − P(edit))','row-label');motion = {segments:[
+    {points:[[83,273],[625,273]],label:0.6,start:.04,end:.2},
+    {points:[[210,273],[625,273]],label:0.88,start:.27,end:.43},
+    {points:[[625,273],[745,138]],label:0.528,start:.5,end:.66},
+    {points:[[625,273],[860,138]],label:-0.528,start:.73,end:.86},
+  ]};}
+  if (step === 2 || step === 3) {
+    const row = step - 2;
+    const y = 403 + row * 52;
+    const hX = 83 + row * 127;
+    body += text(290,345,'×','operator');
+    motion = {segments:[0,1].flatMap(column => [
+      {points:[[hX,153],[hX,85],[300,85],[300,330]],label:model.hidden[row],start:.03+column*.43,end:.14+column*.43},
+      {points:[[745+column*115,138],[625,138],[625,315],[300,315],[300,330]],label:model.logitGradient[column],start:.17+column*.43,end:.28+column*.43},
+      {points:row===0?[[300,330],[399+column*115,355],[399+column*115,y]]:[[300,330],[300,485],[399+column*115,485],[399+column*115,y]],label:model.gradient[row][column],start:.31+column*.43,end:.42+column*.43},
+    ])};
+  }
+  if (step >= 4 && step <= 7) {
+    const index = step - 4;
+    const row = Math.floor(index / 2);
+    const column = index % 2;
+    const oldX = 399 + column * 115;
+    const oldY = 138 + row * 52;
+    const y = 403 + row * 52;
+    body += text(615,290,'×','operator');
+    body += text(615,345,'+','operator');
+    motion = {segments:[
+      {points:[[145,418],[285,418],[285,275],[625,275]],label:model.rate,start:.03,end:.16},
+      {points:[[oldX,y],[625,y],[625,275]],label:model.gradient[row][column],start:.2,end:.33},
+      {points:[[625,275],[625,330]],label:(model.rate*model.gradient[row][column]).toFixed(4),start:.37,end:.49},
+      {points:[[oldX,oldY],[625,oldY],[625,330]],label:model.weights[row][column].toFixed(4),start:.53,end:.65},
+      {points:[[625,330],[745+column*115,330],[745+column*115,y]],label:model.updated[row][column].toFixed(4),start:.7,end:.86},
+    ]};
+  }
+  if (step === 8 || step === 9) {
+    const column = step - 8;
+    body += text(28,555,`z${column} = 1 × ${model.updated[0][column].toFixed(4)} + 2 × ${model.updated[1][column].toFixed(4)}`,'scene-note');
+    body += text(460,565,'+','operator');
+    motion = {segments:[
+      {points:[[745+column*115,403],[625,403],[625,550],[470,550]],label:model.updated[0][column].toFixed(4),start:.05,end:.31},
+      {points:[[745+column*115,455],[625,455],[625,550],[470,550]],label:(2*model.updated[1][column]).toFixed(4),start:.4,end:.66},
+      {points:[[470,550],[83+column*115,550],[83+column*115,643]],label:model.logits[column].toFixed(4),start:.74,end:.86},
+    ]};
+  }
+  if (step === 10) {
+    body += text(355,650,'softmax','row-label');
+    motion = {segments:[
+      {points:[[83,643],[430,643]],label:model.logits[0].toFixed(4),start:.05,end:.31},
+      {points:[[198,643],[430,643]],label:model.logits[1].toFixed(4),start:.4,end:.66},
+      {points:[[430,643],[810,658]],label:model.probability.toFixed(4),start:.74,end:.86},
+    ]};
+  }
+  return frame('gradient',735,body,motion);
+}
+
+const renderers = {speculation: speculationFrame, filtering: filteringFrame, gradient: gradientFrame, chunk: chunkFrame, transfer: transferFrame, request: requestFrame, residency: residencyFrame, queue: queueFrame, routing: routingFrame, cluster: clusterFrame, training: trainingFrame, mask: maskFrame, policy: policyFrame, advantage: advantageFrame, mixer: mixerFrame};
 
 export function sceneFrame(kind, step = 0, options = {}) {
   return renderers[kind](step, options);
