@@ -1,7 +1,3 @@
-import {REQUESTS, scheduleRequests} from '../miscellaneous/inference-models.js';
-
-export {REQUESTS, scheduleRequests};
-
 export function routingBudget(warmWait = 140) {
   const restore = 20;
   const suffix = 40;
@@ -16,18 +12,53 @@ export function routingBudget(warmWait = 140) {
   };
 }
 
-export function supervisedUpdate() {
-  const input = 1;
-  const weight = 0;
-  const target = 1;
-  const rate = 0.4;
-  const probability = 1 / (1 + Math.exp(-weight * input));
-  const loss = -Math.log(probability);
-  const gradient = (probability - target) * input;
-  const change = rate * gradient;
-  const nextWeight = weight - change;
-  const nextProbability = 1 / (1 + Math.exp(-nextWeight * input));
-  return {input, weight, target, rate, probability, loss, gradient, change, nextWeight, nextProbability, nextLoss: -Math.log(nextProbability)};
+export function sessionMemory(pause = 10) {
+  const arrivals = 2;
+  const active = 5;
+  const gibPerSession = 0.5;
+  const capacity = 16;
+  const lifetime = active + pause;
+  const sessions = arrivals * lifetime;
+  const memory = sessions * gibPerSession;
+  return {arrivals, active, pause, gibPerSession, capacity, lifetime, sessions, memory, fits: memory <= capacity};
+}
+
+export function prefixQueue(restore = true) {
+  const prefix = restore ? 0.06 : 6;
+  const suffix = 0.4;
+  const service = prefix + suffix;
+  const requests = Array.from({length: 4}, (_,index) => ({
+    name: index === 3 ? 'Our session' : `Other session ${index + 1}`,
+    start: index * service,
+    prefixEnd: index * service + prefix,
+    finish: (index + 1) * service,
+  }));
+  return {prefix, suffix, service, requests};
+}
+
+export function maskedTargets() {
+  const tokens = ['〈start〉', 'question', '〈assistant〉', 'edit', '〈tool〉', 'fail', '〈assistant〉', 'done', '〈end〉'];
+  const probabilities = new Map([[3, 0.5], [7, 0.25], [8, 0.8]]);
+  const predictions = tokens.slice(1).map((target, index) => ({
+    input: tokens[index], target, targetPosition: index + 1,
+    probability: probabilities.get(index + 1) ?? null,
+    mask: probabilities.has(index + 1) ? 1 : 0,
+  }));
+  const losses = [...probabilities.values()].map(probability => -Math.log(probability));
+  const total = losses.reduce((sum, value) => sum + value, 0);
+  return {tokens, predictions, losses, total, mean: total / losses.length};
+}
+
+export function policyWeight(current = 0.12) {
+  const sampled = 0.1;
+  const advantage = 0.5;
+  const lower = 0.2;
+  const upper = 5;
+  const ratio = current / sampled;
+  // Preserve inclusive boundaries after floating-point division.
+  const mask = Number(ratio >= lower - Number.EPSILON && ratio <= upper + Number.EPSILON);
+  const weight = mask * ratio * advantage;
+  return {current, sampled, advantage, lower, upper, ratio, mask, weight};
 }
 
 export function groupAdvantages() {
@@ -48,14 +79,20 @@ export function mixtureSchedule(tick = 0, balanced = true) {
 
 export const STUDIES = {
   request: {
-    title: 'One request through the service',
-    note: 'Schematic request flow. Arrows carry the named object; travel time is for reading.',
-    steps: ['A prompt arrives', 'The prompt becomes token IDs', 'Prefill constructs retained state', 'Decode reads that state', 'A selected token returns', 'The stream continues'],
+    title: 'A coding session across model turns',
+    note: 'One illustrative session. The tool wait is outside model execution; retained state can survive between turns. Paths are schematic.',
+    steps: ['The harness sends the repository question', 'The service processes the first prompt', 'An action returns to the harness', 'The harness runs the test', 'The session waits while its prefix may remain cached', 'The test result extends the next model request', 'The service resumes the session'],
   },
-  batch: {
-    title: 'The same arrivals under two schedules',
-    note: 'Chosen workload. Each occupied slot advances one request by one token per unit of time.',
-    steps: ['Three requests, two available slots', 'Time 0 to 1', 'Time 1 to 2', 'Time 2 to 3', 'Time 3 to 4', 'Time 4 to 5', 'Time 5 to 6'],
+  residency: {
+    title: 'Memory stays occupied during the pause',
+    note: 'Chosen steady-state model. Two sessions arrive per second, each holds a private 0.5 GiB for five active seconds plus its tool pause. Shared prefixes and eviction are omitted. The 16 GiB bound concerns average residency.',
+    steps: ['Each retained session occupies 0.5 GiB', 'Include active time and the tool pause', 'Count the overlapping session lifetimes', 'Calculate average retained memory', 'Compare with the memory budget'],
+    parameter: {label: 'Tool pause', unit: 's', min: 0, max: 30, step: 1, value: 10},
+  },
+  queue: {
+    title: 'A prefix miss changes the next request’s wait',
+    note: 'Four chosen simultaneous arrivals share one prefill processor. Each prefix takes 6 s to recompute or 0.06 s to restore, followed by 0.4 s for new work. This is an illustrative serial queue, independent of the published measurements.',
+    steps: ['Four sessions return together', 'Recompute the first prefix', 'Recompute the second prefix', 'Recompute the third prefix', 'Our session reaches output after recomputation', 'Restore the first prefix', 'Restore the second prefix', 'Restore the third prefix', 'Our session reaches output after restoration'],
   },
   routing: {
     title: 'A cached prefix and a busy worker',
@@ -73,14 +110,20 @@ export const STUDIES = {
     note: 'Schematic agentic RL cycle. A rollout contains generated tokens, observations, and its termination reason.',
     steps: ['Choose a task', 'Generate an action', 'Run the action in its environment', 'Grade the completed episode', 'Construct the training signal', 'Update the learner', 'Refresh the rollout weights', 'Generate with the refreshed policy'],
   },
-  update: {
-    title: 'One supervised parameter update',
-    note: 'Hand-chosen binary readout with input 1, target 1, initial weight 0, and learning rate 0.4.',
-    steps: ['The prediction and its target', 'Differentiate the loss', 'Scale the gradient', 'Change the weight', 'Evaluate the new prediction'],
+  mask: {
+    title: 'Which next-token predictions contribute to the loss?',
+    note: 'Hand-chosen token sequence and probabilities. The three selected targets are edit, done, and the end marker. These labels illustrate a training mask and do not reproduce a model’s tokenizer.',
+    steps: ['Every input position predicts the next token', 'Select the first assistant target', 'Select the final answer and its end marker', 'Read the three target probabilities', 'Average their negative log probabilities'],
+  },
+  policy: {
+    title: 'Weight one token from a successful repair',
+    note: 'Chosen probabilities and advantage. The displayed positive-advantage ratio bounds [0.2, 5] are MiMo’s reported initial bounds. This traces one coefficient, with the ratio held fixed during differentiation.',
+    steps: ['Keep the recorded sampling probability', 'Compare the learner probability', 'Form the probability ratio', 'Check its permitted interval', 'Weight the log-probability gradient'],
+    parameter: {label: 'Learner probability', unit: '%', min: 2, max: 90, step: 1, value: 12},
   },
   advantage: {
     title: 'Four returns, one shared baseline',
-    note: 'Chosen rewards. This first calculation uses a mean-only baseline; normalization and clipping follow in the text.',
+    note: 'Chosen rewards. This first calculation uses a mean-only baseline; the later token coefficient uses the reported ratio mask.',
     steps: ['Four sampled episodes', 'Compute the group mean', 'Compare episode A', 'Compare episode B', 'Compare episode C', 'Compare episode D'],
   },
   mixer: {
@@ -91,9 +134,10 @@ export const STUDIES = {
 };
 
 export function studyDuration(kind, step = 0) {
+  if (kind === 'mask' && step === 4) return 24000;
   if (kind === 'advantage' && step === 1) return 18000;
   if (kind === 'routing' && step === 4) return 18000;
-  return kind === 'update' || kind === 'advantage' ? 12000 : 8000;
+  return ['mask', 'policy', 'advantage', 'residency', 'queue'].includes(kind) ? 12000 : 8000;
 }
 
 export function advanceStudy(kind, step) {

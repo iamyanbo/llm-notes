@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
-import {STUDIES, scheduleRequests, routingBudget, supervisedUpdate, groupAdvantages, mixtureSchedule, advanceStudy} from '../systems/models.mjs';
+import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, advanceStudy} from '../systems/models.mjs';
 import {sceneFrame, studyFigure} from '../systems/views.mjs';
 import {createStudy, initializeStudies} from '../systems/app.mjs';
 
@@ -31,29 +31,39 @@ function harness(kind, reduced = false) {
   return {document, window, figure, controller, click, frames, callbacks};
 }
 
-test('the examples preserve the computed arrivals, memory-free scheduling assumptions, and queue crossover', () => {
-  const serial = scheduleRequests(2, true);
-  const continuous = scheduleRequests(2, false);
-  assert.deepEqual(serial.completion, [3, 5, 6]);
-  assert.deepEqual(continuous.completion, [3, 3, 4]);
-  assert.equal(serial.mean, 11 / 3);
-  assert.equal(continuous.mean, 7 / 3);
+test('retention lifetime, serial prefix work, and queue crossover agree with the examples', () => {
+  assert.equal(sessionMemory(0).memory, 5);
+  assert.equal(sessionMemory(10).sessions, 30);
+  assert.equal(sessionMemory(10).memory, 15);
+  assert.equal(sessionMemory(11).fits, true);
+  assert.equal(sessionMemory(12).fits, false);
+  for (const restore of [false, true]) {
+    const model = prefixQueue(restore);
+    model.requests.forEach((request, index) => {
+      assert.equal(request.start, index * model.service);
+      assert.ok(Math.abs(request.finish - request.start - model.prefix - model.suffix) < 1e-12);
+    });
+  }
+  assert.equal(prefixQueue(false).requests[3].finish, 25.6);
+  assert.ok(Math.abs(prefixQueue(true).requests[3].finish - 1.84) < 1e-12);
   assert.equal(routingBudget(140).warm, 200);
-  assert.equal(routingBudget(140).cold, 320);
   assert.equal(routingBudget(260).choice, 'Equal estimated time');
   assert.equal(routingBudget(270).choice, 'Cold worker');
 });
 
-test('the supervised step follows its derivative and decreases the chosen loss', () => {
-  const model = supervisedUpdate();
-  assert.equal(model.gradient, -0.5);
-  assert.equal(model.change, -0.2);
-  assert.equal(model.nextWeight, 0.2);
-  assert.ok(Math.abs(model.nextProbability - 0.5498339973) < 1e-9);
-  assert.ok(model.nextLoss < model.loss);
-  const epsilon = 1e-6;
-  const loss = weight => -Math.log(1 / (1 + Math.exp(-weight)));
-  assert.ok(Math.abs((loss(epsilon) - loss(-epsilon)) / (2 * epsilon) - model.gradient) < 1e-8);
+test('the loss mask selects shifted assistant targets and the ratio mask includes its boundaries', () => {
+  const model = maskedTargets();
+  assert.deepEqual(model.predictions.filter(prediction => prediction.mask).map(prediction => prediction.targetPosition), [3,7,8]);
+  model.predictions.forEach((prediction,index) => {
+    assert.equal(prediction.input, model.tokens[index]);
+    assert.equal(prediction.target, model.tokens[index+1]);
+  });
+  assert.ok(Math.abs(model.mean - Math.log(10)/3) < 1e-12);
+  assert.ok(Math.abs(policyWeight().weight - 0.6) < 1e-12);
+  assert.equal(policyWeight(0.02).mask, 1);
+  assert.equal(policyWeight(0.019).mask, 0);
+  assert.equal(policyWeight(0.5).mask, 1);
+  assert.equal(policyWeight(0.51).weight, 0);
 });
 
 test('advantages use the displayed returns and the mixture comparison keeps ten slots', () => {
@@ -79,7 +89,8 @@ test('every progressive SVG is finite, uniquely labelled, and leaves future outp
       assert.equal(advanceStudy(kind, spec.steps.length - 1), spec.steps.length - 1);
     }
   }
-  assert.doesNotMatch(sceneFrame('update', 0).markup, /-0\.5<\/text>|0\.5498/);
+  assert.doesNotMatch(sceneFrame('mask', 0).markup, /0\.7675/);
+  assert.doesNotMatch(sceneFrame('queue', 0).markup, /19\.2 s|25\.6 s|1\.84 s/);
   assert.doesNotMatch(sceneFrame('advantage', 0).markup, /-0\.5<\/text>/);
   const {document} = parseHTML(sceneFrame('cluster', 0).markup);
   assert.equal(document.querySelectorAll('.gpu-node').length, 8);
@@ -106,7 +117,7 @@ test('manual controls, scrubber and changed parameters remain tied to the numeri
 });
 
 test('playback preserves SVG nodes during travel, pauses, resumes, and stops at the result', () => {
-  const {figure, controller, click, frames, callbacks} = harness('update');
+  const {figure, controller, click, frames, callbacks} = harness('mask');
   click('[data-study-play]');
   frames(32);
   const svg = figure.querySelector('svg');
@@ -122,10 +133,10 @@ test('playback preserves SVG nodes during travel, pauses, resumes, and stops at 
   frames(2);
   assert.ok(controller.state.progress >= paused);
   frames(600);
-  assert.equal(controller.state.step, STUDIES.update.steps.length - 1);
+  assert.equal(controller.state.step, STUDIES.mask.steps.length - 1);
   assert.equal(controller.state.running, false);
   assert.equal(callbacks.size, 0);
-  assert.match(figure.textContent, /0\.5498/);
+  assert.match(figure.textContent, /0\.7675/);
 });
 
 test('reduced motion and offscreen suspension keep results manually inspectable', () => {
@@ -134,7 +145,7 @@ test('reduced motion and offscreen suspension keep results manually inspectable'
   assert.equal(reduced.controller.state.step, 1);
   assert.equal(reduced.controller.state.running, false);
   assert.equal(reduced.callbacks.size, 0);
-  const regular = harness('batch');
+  const regular = harness('queue');
   regular.click('[data-study-play]');
   regular.frames(10);
   regular.controller.setVisible(false);
@@ -143,7 +154,7 @@ test('reduced motion and offscreen suspension keep results manually inspectable'
 });
 
 test('the enlarged view moves the same figure and restores its inspected state', () => {
-  const {document, window} = parseHTML(`<html><body>${studyFigure('update')}</body></html>`);
+  const {document, window} = parseHTML(`<html><body><button data-study-open="mask">Open map</button>${studyFigure('mask')}</body></html>`);
   window.matchMedia = () => ({matches: false, addEventListener() {}});
   window.requestAnimationFrame = () => 1;
   window.cancelAnimationFrame = () => {};
@@ -153,7 +164,7 @@ test('the enlarged view moves the same figure and restores its inspected state',
   const figure = document.querySelector('[data-study]');
   figure.getBoundingClientRect = () => ({height: 600});
   controllers.get(figure).inspect(3);
-  figure.querySelector('[data-study-enlarge]').dispatchEvent(new window.Event('click'));
+  document.querySelector('[data-study-open]').dispatchEvent(new window.Event('click'));
   assert.equal(dialog.querySelector('[data-study]'), figure);
   assert.equal(controllers.get(figure).state.step, 3);
   dialog.close();
@@ -170,6 +181,10 @@ test('both prototypes have working reading entry points, references, and Foundat
     assert.equal(document.querySelectorAll('main>section').length, 10);
     assert.ok(document.querySelector('a[href="#introduction"]'));
     assert.ok(document.querySelector('link[href="../foundations/neobrutalism.css"]'));
+    assert.ok(document.querySelector('button[data-study-open]'));
+    assert.ok(document.querySelector('a[href="../miscellaneous/"]'));
+    assert.ok(document.querySelectorAll('a[href^="../miscellaneous/#"]').length >= 4);
+    assert.doesNotMatch(html, /11\/3|7\/3|One supervised parameter update/);
     assert.equal(document.querySelectorAll('.katex-error').length, 0);
     const ids = [...document.querySelectorAll('[id]')].map(node => node.id);
     assert.equal(new Set(ids).size, ids.length);

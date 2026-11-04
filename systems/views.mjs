@@ -1,4 +1,4 @@
-import {STUDIES, REQUESTS, scheduleRequests, routingBudget, supervisedUpdate, groupAdvantages, mixtureSchedule} from './models.mjs';
+import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule} from './models.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 const number = value => Number.isInteger(value) ? String(value) : value.toFixed(4);
@@ -21,49 +21,79 @@ function frame(kind, height, body, motion) {
 }
 
 function requestFrame(step) {
-  const nodes = [
-    [30, 55, 220, 'A request', 'messages and options'],
-    [340, 55, 220, 'Tokenize', 'ordered token IDs'],
-    [660, 55, 260, 'Prefill', 'prompt computation'],
-    [660, 260, 260, 'Generate', 'one new position'],
-    [340, 260, 220, 'Select a token', 'scores and sampling'],
-    [30, 260, 220, 'Stream text', 'a decoded text piece'],
-  ];
+  const actors = [[50, 'Harness', 'the coding session'], [370, 'Model service', 'prefill and decode'], [690, 'Tool environment', 'repository and tests']];
+  let body = actors.map(([x, title, detail], index) => block(x, 25, 220, title, detail, index === ([0,1,0,2,2,0,1][step]))).join('');
+  for (const x of [160, 480, 800]) body += `<line x1="${x}" y1="110" x2="${x}" y2="585" class="scene-lifeline"/>`;
   const paths = [
-    [[250, 97], [340, 97]], [[560, 97], [660, 97]],
-    [[790, 139], [790, 210], [880, 210], [880, 430]],
-    [[790, 430], [790, 344]], [[660, 302], [560, 302]], [[340, 302], [250, 302]],
+    [[160,150],[480,150]], [[480,220],[160,220]], [[160,290],[800,290]],
+    [[800,420],[160,420]], [[160,490],[480,490]], [[480,555],[160,555]],
   ];
-  let body = paths.map(points => wire(points, 'request')).join('');
-  body += nodes.map((node, index) => block(...node, index === step)).join('');
-  body += block(660, 430, 260, 'Retained KV state', 'kept between token steps', step === 2 || step === 3);
-  body += text(36, 420, 'The selected token becomes input to the next step.', 'scene-note');
-  body += wire([[450, 344], [450, 390], [625, 390], [625, 278], [660, 278]], 'request');
-  const travel = [paths[0], paths[1], paths[3], paths[4], paths[5]];
-  return frame('request', 550, body, step ? {points: travel[step - 1], label: ['','messages','IDs','state','scores','text'][step]} : null);
+  const labels = ['repository question', 'edit and test call', 'run the tests', 'test failure', 'history + test result', 'next action'];
+  paths.forEach((points, index) => {
+    body += wire(points, 'request');
+    body += text(Math.min(points[0][0],points[1][0]) + 18, points[0][1] - 12, labels[index], 'row-label');
+  });
+  body += block(375,325,210,'Reusable prefix','may remain cached',step===4);
+  body += block(695,325,210,'Test running','no model step here',step===4);
+  const motions = [null, {points:paths[0],label:'prompt'}, {points:paths[1],label:'action'}, {points:paths[2],label:'test'}, null, {points:paths[3],label:'result'}, {segments:[
+    {points:paths[4],label:'new turn',start:0.08,end:0.43},
+    {points:paths[5],label:'action',start:0.52,end:0.86},
+  ]}];
+  return frame('request',615,body,motions[step]);
 }
 
-function batchFrame(step) {
-  const serial = scheduleRequests(2, true);
-  const continuous = scheduleRequests(2, false);
-  let body = text(28, 27, 'A arrives at 0 and needs 3 tokens. B arrives at 1 and needs 2. C arrives at 2 and needs 1.', 'scene-note');
-  for (const [group, model, top] of [['One request at a time', serial, 96], ['Continuous batching, two slots', continuous, 350]]) {
-    body += text(28, top - 24, group, 'section-label');
-    for (let time = 0; time <= 6; time++) body += text(235 + time * 92, top - 3, time, 'tick-label');
-    REQUESTS.forEach((request, index) => {
-      const y = top + index * 48;
-      body += text(35, y + 29, `Request ${request.id}`, 'row-label');
-      for (let time = 0; time < 6; time++) body += `<rect class="timeline-empty" x="${235 + time * 92}" y="${y}" width="85" height="38" rx="3"/>`;
-      for (const interval of model.timeline) {
-        if (interval.time >= step || !interval.selected.includes(index)) continue;
-        const arriving = interval.time === step - 1;
-        body += `<g ${arriving ? 'data-arrival=""' : ''}><rect class="timeline-fill ${index === 2 ? 'warm' : ''}" x="${235 + interval.time * 92}" y="${y}" width="85" height="38" rx="3"/>${text(277 + interval.time * 92, y + 25, request.id, 'timeline-token')}</g>`;
+function residencyFrame(step, options) {
+  const model = sessionMemory(options.value);
+  let body = text(28,35,'Each session retains a private 0.5 GiB for its entire lifetime in this chosen model.','scene-note');
+  body += cell(28,100,170,'Arrivals',`${model.arrivals} / s`,{active:step===2});
+  body += cell(275,100,170,'Active time',`${model.active} s`,{active:step===1});
+  body += text(480,149,'+','operator');
+  body += cell(520,100,180,'Tool pause',`${model.pause} s`,{active:step===1});
+  body += cell(765,100,165,'KV budget',`${model.capacity} GiB`,{active:step===4});
+  body += cell(28,280,170,'Per session',`${model.gibPerSession} GiB`,{active:step===3});
+  body += cell(275,280,425,'Retained lifetime',step>=1?`${model.lifetime} s`:null,{warm:true,arrived:step===1});
+  body += cell(28,470,270,'Average resident sessions',step>=2?model.sessions:null,{warm:true,arrived:step===2});
+  body += cell(365,470,300,'Average retained memory',step>=3?`${model.memory} GiB`:null,{warm:true,arrived:step===3});
+  if(step===4)body += `<g data-arrival="">${text(715,505,model.fits?'Within budget':'Over budget','result-note')}${text(715,535,'on average','scene-note')}</g>`;
+  const calculations = {
+    1:[{points:[[360,138],[480,230]],label:5,start:.06,end:.3},{points:[[610,138],[480,230]],label:model.pause,start:.36,end:.6},{points:[[480,230],[487,318]],label:model.lifetime,start:.68,end:.86}],
+    2:[{points:[[113,138],[160,410]],label:'2 / s',start:.06,end:.3},{points:[[487,318],[160,410]],label:`${model.lifetime} s`,start:.36,end:.6},{points:[[160,410],[163,508]],label:model.sessions,start:.68,end:.86}],
+    3:[{points:[[163,508],[335,565]],label:model.sessions,start:.06,end:.3},{points:[[113,318],[113,390],[335,390],[335,565]],label:'0.5 GiB',start:.36,end:.6},{points:[[335,565],[515,565],[515,508]],label:`${model.memory} GiB`,start:.68,end:.86}],
+    4:[{points:[[515,508],[800,508]],label:`${model.memory} / 16`,start:.1,end:.86}],
+  };
+  return frame('residency',635,body,step?{segments:calculations[step]}:null);
+}
+
+function queueFrame(step) {
+  let body = text(28,30,'All four sessions arrive at time 0. Our session is fourth in this chosen prefill queue.','scene-note');
+  for (const [restore,top,heading] of [[false,105,'Recompute each missing prefix'],[true,405,'Restore each retained prefix']]) {
+    const model = prefixQueue(restore);
+    body += text(28,top-45,heading,'section-label');
+    for(const [x,label] of [[210,'Queue wait'],[385,'Prefix work'],[560,'New work'],[770,'First output']])body+=text(x,top-15,label,'cell-label');
+    model.requests.forEach((request,index)=>{
+      const y=top+index*48;
+      const operation=index+1+(restore?4:0);
+      body+=text(28,y+27,request.name,'row-label');
+      const wait = index === 0 || step >= operation - 1 ? request.start : null;
+      for(const [x,value] of [[210,wait],[385,model.prefix],[560,model.suffix],[770,step>=operation?request.finish:null]]){
+        body+=`<g class="scene-cell ${x===770?'warm':''}"><rect x="${x}" y="${y}" width="140" height="38" rx="3"/>`;
+        const arriving = (step===operation && x===770) || (index>0 && step===operation-1 && x===210);
+        if(value!==null)body+=`<g ${arriving?'data-arrival=""':''}>${text(x+70,y+26,`${Number(value.toFixed(2))} s`,'queue-number')}</g>`;
+        body+='</g>';
       }
-      if (step >= model.completion[index]) body += `<g ${step === model.completion[index] ? 'data-arrival=""' : ''}>${text(830, y + 27, `done at ${model.completion[index]}`, 'row-label')}</g>`;
+      for(const [x,operator] of [[365,'+'],[540,'+'],[735,'=']])body+=text(x,y+27,operator,'row-label');
     });
   }
-  if (step === 6) body += `<g data-arrival="">${text(28, 570, 'Mean completion latency   serial 11/3   ·   continuous 7/3 time units', 'scene-note')}</g>`;
-  return frame('batch', 600, body, step ? {points: [[170, 120], [200, 120], [235 + (step - 1) * 92, 120]], label: `t = ${step}`} : null);
+  if(!step)return frame('queue',635,body,null);
+  const restore=step>4;
+  const model=prefixQueue(restore);
+  const index=(step-1)%4;
+  const y=(restore?405:105)+index*48+19;
+  const request=model.requests[index];
+  const values=[request.start,model.prefix,model.suffix];
+  const segments=values.map((value,index)=>({points:[[280+index*175,y],[750,y]],label:Number(value.toFixed(2)),start:.04+index*.2,end:.19+index*.2}));
+  segments.push({points:[[750,y],[840,y]],label:Number(request.finish.toFixed(2)),start:.7,end:.86});
+  return frame('queue',635,body,{segments});
 }
 
 function routingFrame(step, options) {
@@ -147,43 +177,64 @@ function trainingFrame(step) {
   return frame('training', 590, body, step ? {points: paths[step - 1], label: ['','task','action','return','signal','gradient','weights','weights'][step]} : null);
 }
 
-function updateFrame(step) {
-  const model = supervisedUpdate();
-  let body = text(28, 34, 'A binary readout predicts the correct alternative with probability σ(wx). We choose x = 1.', 'scene-note');
-  body += cell(28, 100, 170, 'Current probability p', number(model.probability), {active: step === 1});
-  body += text(224, 149, '−', 'operator');
-  body += cell(270, 100, 170, 'Target y', model.target, {active: step === 1});
-  body += text(467, 149, '=', 'operator');
-  body += cell(510, 100, 190, 'Gradient g = p − y', step >= 1 ? number(model.gradient) : null, {warm: true, arrived: step === 1});
-  body += cell(755, 100, 170, 'Current weight w', model.weight, {active: step === 3});
-  body += cell(28, 290, 170, 'Learning rate η', model.rate, {active: step === 2});
-  body += text(224, 339, '×', 'operator');
-  body += cell(270, 290, 170, 'Gradient g', step >= 1 ? model.gradient : null, {active: step === 2});
-  body += text(467, 339, '=', 'operator');
-  body += cell(510, 290, 190, 'Step ηg', step >= 2 ? model.change : null, {warm: true, arrived: step === 2});
-  body += cell(755, 290, 170, 'New weight w − ηg', step >= 3 ? model.nextWeight : null, {warm: true, arrived: step === 3});
-  if (step === 3) body += text(730, 251, '−', 'operator');
-  body += text(28, 460, `Initial weight 0   ·   initial loss ${number(model.loss)}   ·   update rule w′ = w − ηg`, 'scene-note');
-  if (step === 4) body += `<g data-arrival="">${text(28, 510, `New probability ${number(model.nextProbability)}   ·   new loss ${number(model.nextLoss)}`, 'result-note')}</g>`;
-  const calculations = {
-    1: [
-      {points: [[113, 138], [235, 138]], label: '0.5', start: 0.06, end: 0.25},
-      {points: [[355, 138], [235, 138]], label: '1', start: 0.31, end: 0.50},
-      {points: [[235, 138], [605, 138]], label: '−0.5', start: 0.60, end: 0.86},
-    ],
-    2: [
-      {points: [[113, 328], [235, 328]], label: '0.4', start: 0.06, end: 0.25},
-      {points: [[355, 328], [235, 328]], label: '−0.5', start: 0.31, end: 0.50},
-      {points: [[235, 328], [605, 328]], label: '−0.2', start: 0.60, end: 0.86},
-    ],
-    3: [
-      {points: [[840, 138], [840, 235], [740, 235]], label: '0', start: 0.06, end: 0.25},
-      {points: [[605, 328], [740, 328], [740, 235]], label: '−0.2', start: 0.31, end: 0.50},
-      {points: [[740, 235], [840, 235], [840, 328]], label: '0.2', start: 0.60, end: 0.86},
-    ],
-    4: [{points: [[840, 328], [840, 420], [440, 420], [440, 490]], label: '0.5498', start: 0.08, end: 0.86}],
+function maskFrame(step) {
+  const model=maskedTargets();
+  let body=text(25,30,'A toy conversation. Arrows align each input position with its next-token target.','scene-note');
+  body+=text(25,65,'Recorded tokens','row-label');
+  model.tokens.forEach((token,index)=>{
+    const x=25+index*100;
+    body+=`<g class="scene-cell"><rect x="${x}" y="85" width="90" height="55" rx="3"/>${text(x+45,118,token,'token-label')}</g>`;
+    body+=text(x+45,160,index,'tick-label');
+  });
+  body+=text(25,220,'Target','row-label');
+  body+=text(25,345,'Loss mask','row-label');
+  model.predictions.forEach((prediction,index)=>{
+    const x=125+index*100;
+    const selected=(step>=1&&prediction.targetPosition===3)||(step>=2&&prediction.targetPosition>=7);
+    body+=wire([[70+index*100,168],[x+45,235]],'mask');
+    body+=`<g class="scene-cell ${selected?'selected':''}"><rect x="${x}" y="240" width="90" height="55" rx="3"/>${text(x+45,273,prediction.target,'token-label')}</g>`;
+    body+=text(x+45,345,step>=2?prediction.mask:selected?1:'·','cell-number');
+  });
+  const chosen=model.predictions.filter(prediction=>prediction.mask);
+  chosen.forEach((prediction,index)=>{
+    body+=cell(65+index*300,430,230,`P(${prediction.target} | its prefix)`,step>=3?prediction.probability:null,{warm:true,arrived:step===3});
+    if(step===4)body+=text(155+index*300,545,'−log','row-label');
+  });
+  if(step===4)body+=text(420,575,'add, then divide by 3','cell-label');
+  if(step===4)body+=`<g data-arrival="">${text(65,600,`Mean loss = (${model.losses.map(value=>value.toFixed(4)).join(' + ')}) / 3 = ${model.mean.toFixed(4)}`,'result-note')}</g>`;
+  const motions={
+    1:{points:[[370,112],[370,267]],label:'edit'},
+    2:{segments:[{points:[[770,112],[770,267]],label:'done',start:.08,end:.42},{points:[[870,112],[870,267]],label:'end',start:.52,end:.86}]},
+    4:{segments:chosen.flatMap((prediction,index)=>[
+      {points:[[180+index*300,468],[180+index*300,540]],label:prediction.probability,start:.03+index*.26,end:.13+index*.26},
+      {points:[[180+index*300,550],[480,575]],label:model.losses[index].toFixed(4),start:.17+index*.26,end:.25+index*.26},
+    ]).concat([{points:[[480,575],[480,590]],label:model.mean.toFixed(4),start:.8,end:.86}])},
   };
-  return frame('update', 550, body, step ? {segments: calculations[step]} : null);
+  return frame('mask',640,body,motions[step]||null);
+}
+
+function policyFrame(step, options) {
+  const model=policyWeight((options.value??12)/100);
+  let body=text(28,30,'One generated token from a successful repair has chosen advantage A = 0.5.','scene-note');
+  body+=cell(28,100,245,'Sampling probability q',model.sampled,{active:step===0});
+  body+=cell(345,100,245,'Learner probability p',number(model.current),{active:step===1});
+  body+=cell(690,100,240,'Ratio r = p / q',step>=2?number(model.ratio):null,{warm:true,arrived:step===2});
+  body+=block(28,275,520,'Permitted positive-advantage ratio','0.2 ≤ r ≤ 5 at initialization',step===3);
+  body+=cell(690,275,240,'In range?  M',step>=3?model.mask:null,{warm:true,arrived:step===3});
+  body+=cell(28,475,170,'M',step>=3?model.mask:null);
+  body+=text(230,525,'×','operator');
+  body+=cell(275,475,170,'r',step>=2?number(model.ratio):null);
+  body+=text(480,525,'×','operator');
+  body+=cell(520,475,170,'A',model.advantage);
+  body+=text(725,525,'=','operator');
+  body+=cell(765,475,165,'Gradient weight',step>=4?number(model.weight):null,{warm:true,arrived:step===4});
+  body+=text(28,610,'The ratio is held fixed when differentiating the weighted log probability.','scene-note');
+  const motions={
+    2:{segments:[{points:[[467,138],[625,210]],label:number(model.current),start:.06,end:.3},{points:[[150,138],[150,210],[625,210]],label:model.sampled,start:.36,end:.6},{points:[[625,210],[810,210],[810,138]],label:number(model.ratio),start:.68,end:.86}]},
+    3:{points:[[810,138],[810,313]],label:model.mask?'in range':'outside'},
+    4:{segments:[model.mask,model.ratio,model.advantage].map((value,index)=>({points:[[113+index*247,513],[750,570]],label:number(value),start:.05+index*.2,end:.2+index*.2})).concat([{points:[[750,570],[847,570],[847,513]],label:number(model.weight),start:.72,end:.86}])},
+  };
+  return frame('policy',645,body,motions[step]||null);
 }
 
 function advantageFrame(step) {
@@ -228,7 +279,7 @@ function mixerFrame(step) {
   return frame('mixer', 520, body, step ? {points: [[70, 375], [70, 450], [680, 450]], label: `t = ${step}`} : null);
 }
 
-const renderers = {request: requestFrame, batch: batchFrame, routing: routingFrame, cluster: clusterFrame, training: trainingFrame, update: updateFrame, advantage: advantageFrame, mixer: mixerFrame};
+const renderers = {request: requestFrame, residency: residencyFrame, queue: queueFrame, routing: routingFrame, cluster: clusterFrame, training: trainingFrame, mask: maskFrame, policy: policyFrame, advantage: advantageFrame, mixer: mixerFrame};
 
 export function sceneFrame(kind, step = 0, options = {}) {
   return renderers[kind](step, options);

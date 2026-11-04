@@ -1,130 +1,174 @@
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
-const mimo = 'https://arxiv.org/html/2610.11959';
+const mimo = 'https://arxiv.org/html/2610.11959v1';
 const rufus = 'https://arxiv.org/html/2609.29421v2';
 const code = 'https://github.com/XiaomiMiMo/verl/tree/mimo-oss';
+const repetition = 'https://mimo.xiaomi.com/blog/mimo-v2-6-tool-call-repetition';
+const misc = '../miscellaneous/';
 
 export const training = {
   slug: 'training',
   title: 'Training and post-training',
   heading: 'Teaching<br><em>a language model.</em>',
-  subtitle: 'An example becomes a prediction, a mistake becomes a gradient, and an interaction becomes training experience.',
-  description: 'A reading prototype following numerical training updates into a contemporary MiMo-V2.6 training case study, agentic RL, and cluster scheduling.',
+  subtitle: 'Follow a code repair from a demonstration to a graded episode, then into the batch that changes a checkpoint.',
+  description: 'A motivated investigation of MiMo-V2.6 training, assistant loss masks, per-token policy weights, agent trajectories, task collection, and reproducible evidence.',
   hero: 'training',
+  overviewLabel: 'Open the learning cycle',
   companion: {slug: 'serving', title: 'Serving LLMs'},
   introduction:
-    p('Consider a model that can write a plausible explanation of a failing test but repeatedly proposes a change that does not fix it. We could show it examples of successful repairs. We could also let it attempt repairs, execute them, and use the result to adjust its future behavior. These give us different sources of information for changing the model’s parameters.') +
-    p('A demonstration supplies particular actions to imitate. An execution result can tell us whether a complete attempt succeeded without specifying the actions that should have produced that success. The second kind of feedback creates another problem. A successful episode may contain many generated tokens and tool calls. We need a way for its outcome to influence the probabilities of the actions that produced it.') +
-    p('Before constructing that learning rule, we will follow a supervised example through one parameter update. It gives us a concrete account of a loss, its gradient, and a changed prediction. We can then ask how sampled attempts and their rewards supply a training signal when a preferred response has not been written down in advance.') +
-    p('MiMo-V2.6 provides the main contemporary case study. Rufus-Air supplies a second perspective on successive post-training stages. The reports enter where a construction raises a question about an actual training run. Their settings and observations stay attached to the experiment that produced them.') +
-    p('The assumed background is the transformer and basic gradient descent developed in <a href="../foundations/">Foundations</a>, with the learning essays in <a href="../transformers/">Transformers in Practice</a> as companions. Small numerical examples here have stated, hand-chosen parameters. The linked implementations provide the larger training configurations.'),
+    p('Consider the coding session in the serving essay. The assistant edits a repository, runs its tests, and receives a failure. It can continue trying with the same weights. Training asks a further question. How could experience from repairs change the model so that future attempts are more likely to succeed?') +
+    p('A successful demonstration supplies actions to imitate. A test result supplies a judgment about an attempted repair. These give us different routes to a parameter update. In the second route, someone still has to define the task, run the environment, retain the generated actions, and turn the outcome into a learning signal.') +
+    p('MiMo-V2.6 is our main research case. We will follow the preparation of a starting checkpoint, the construction of training targets, and the collection of graded agent episodes. The opening cycle shows the part where attempts return to a learner and revised weights reach the rollout model. Its arrows carry tasks, actions, feedback, and parameters at different points in the process.') +
+    p('Miscellaneous Topics develops <a href="'+misc+'#learning-efficiency">gradient descent and generalization</a>, <a href="'+misc+'#synthetic-data">distillation</a>, and <a href="'+misc+'#harnesses">the harness loop</a>. We will use those explanations to investigate the decisions within a training recipe. Rufus-Air supplies a second, explicitly staged recipe where its design clarifies a choice. Small numerical examples below are authored calculations, with their inputs stated.'),
   sections: [
     {
-      id: 'one-update', title: 'One prediction, one parameter update',
+      id: 'pretraining-and-midtraining', title: 'Where MiMo’s reinforcement learning begins',
       body:
-        p('A language model assigns probabilities to possible next tokens. To see how a training example changes such probabilities, take a binary readout with one input feature. Set that feature to '+math(String.raw`x=1`)+'. The readout has one trainable weight '+math(String.raw`w`)+' and gives the desired alternative probability '+math(String.raw`p=\sigma(wx)`)+', where '+math(String.raw`\sigma(s)=1/(1+\exp(-s))`)+'.') +
-        p('Choose the observed target '+math(String.raw`y=1`)+' and the initial weight '+math(String.raw`w=0`)+'. The prediction is then '+math(String.raw`p=1/2`)+'. A training objective should favor assigning more probability to the observed outcome. The binary negative log-likelihood is') +
-        equation(String.raw`L(w)=-y\log p-(1-y)\log(1-p).`) +
-        p('With our target, the initial loss is '+math(String.raw`-\log(1/2)\approx0.6931`)+'. Differentiating through the sigmoid gives '+math(String.raw`\partial L/\partial w=(p-y)x`)+'. Since the input is one, the gradient is '+math(String.raw`0.5-1=-0.5`)+'. Its negative sign tells us that increasing this weight locally decreases the loss.') +
-        p('We still need to choose the size of the change. Use a learning rate '+math(String.raw`\eta=0.4`)+' for this example. Gradient descent subtracts the scaled gradient from the current weight. The diagram follows the actual operands into that calculation.') +
-        study('update') +
-        equation(String.raw`w'=w-\eta\frac{\partial L}{\partial w}=0-0.4(-0.5)=0.2.`) +
-        p('The updated prediction is '+math(String.raw`\sigma(0.2)\approx0.5498`)+' and the loss is about 0.5981. The single example has made the desired alternative more probable at this input. A real model’s update involves many interacting parameters and examples. Whether the change helps unseen inputs must be tested on data held apart from that update.') +
-        definition('1.1', 'A <strong>training step</strong> applies an optimizer update using gradients accumulated from a stated batch of loss-bearing predictions. The examples, loss reduction, accumulation, and optimizer state determine the update associated with that step.'),
+        p('Before we ask a model to learn from repairs, it must be able to attempt one. It needs enough language and code knowledge to read an instruction, produce an edit, and use the tools presented by its harness. A verifier can distinguish attempts only among the behaviors that the starting checkpoint generates.') +
+        p('MiMo reports text-only pretraining followed by joint multimodal training. Its mid-training develops agent behavior and extends context support before large-scale RL. Later distillation transfers behavior to smaller models.') +
+        source('MiMo-V2.6 stages', mimo) +
+        table(['Point in the recipe', 'What enters the learning process', 'What we need to inspect'], [
+          ['Pretraining', 'Recorded sequences and their next-token targets', 'Data mixture, objective, and checkpoint'],
+          ['Preparation for agent learning', 'Examples of actions, observations, and longer contexts', 'Which behaviors the checkpoint can already attempt'],
+          ['Reinforcement learning', 'Sampled episodes with feedback', 'How outcomes weight generated actions'],
+          ['Transfer to another model', 'Teacher examples or distributions', 'Student objective and independent evaluation'],
+        ], 'Questions we carry through the recipe; mechanisms and stage boundaries depend on the report') +
+        p('Imagine that our initial model rarely emits a valid test invocation. Rewarding a completed repair can leave almost every attempt at zero, even if successful repairs would be very valuable. Demonstrations can make the action format available before the verifier has enough useful variation to compare.') +
+        p('Rufus-Air places supervised fine-tuning before successive reasoning, coding, instruction-following, agent, and preference stages. The authors motivate their order through the capabilities already available and the reliability of rewards. Later stages update the same parameters, so earlier gains still need measurement.') +
+        source('Rufus-Air stage order and its limits', rufus) +
+        p('A stage name therefore leaves several questions open. Which exact tokens are targets? Which observations are context? How are examples weighted? The repair conversation lets us inspect those choices before we return to feedback from tests.'),
     },
     {
-      id: 'pretraining-and-midtraining', title: 'What the starting checkpoint has learned',
+      id: 'one-update', title: 'Which parts of the conversation should teach?',
       body:
-        p('The update above began with a specified weight. A post-training run begins with a much larger specified object, its starting checkpoint. That checkpoint already determines which responses the model is likely to generate. Changing the training objective acts on those existing probabilities and representations.') +
-        p('During next-token pretraining, recorded sequences supply many prediction problems. At position '+math(String.raw`t`)+', the permitted prefix supplies the input and the recorded next token supplies the target. Causal masking prevents a prediction from reading its target through a future position. A batch collects these losses so that their gradients can be evaluated together.') +
-        p('More text does not by itself specify a useful mixture. Documents differ in source, quality, duplication, and relevance to the intended capabilities. Repeating one source increases its share of the optimization. If evaluation examples leak into training, performance on those examples changes its meaning. Data selection and evaluation design consequently meet before the first large run begins.') +
-        p('MiMo-V2.6 reports text-only pretraining followed by joint multimodal training. Mid-training extends context support and prepares the model for its subsequent large-batch RL run, including an optimizer transition and quantization-aware training.') +
-        source('MiMo-V2.6, pretraining and mid-training', mimo) +
-        p('A context extension changes the range of dependencies the training examples can expose. It also changes the execution cost. Long sequences need retained activations for backpropagation and create attention and communication work. The architecture’s local and global attention pattern affects which data each device must exchange when a sequence is divided across devices.') +
-        p('An optimizer transition introduces another stateful change. Momentum, per-coordinate statistics, and master weights may already reflect earlier updates. Moving to a new update rule therefore requires a decision about initialization and state transfer. A stable loss curve after the transition is an observation to examine together with validation behavior and the exact configuration.'),
+        p('Suppose we have one demonstration containing a question, an assistant edit, a failing tool observation, and a final assistant response. The tool observation must be available when the model predicts the final response. We can still choose to apply loss only to the assistant’s generated positions.') +
+        p('Use a toy token sequence with nine positions. Its labels stand for individual tokens in this example, including the role markers. A real tokenizer would usually split this conversation into many more positions. In the diagram, input position '+math('t')+' predicts the token at '+math('t+1')+'. We select edit, done, and the final end marker as the three training targets.') +
+        study('mask') +
+        p('At the position before edit, suppose the model assigns edit probability 0.5. Before done it assigns done probability 0.25, and before the end marker it assigns that marker probability 0.8. Each probability is conditional on its own permitted prefix.') +
+        p('The negative log-probabilities are approximately 0.6931, 1.3863, and 0.2231. Averaging the three gives') +
+        equation(String.raw`L=\frac{-\log(0.5)-\log(0.25)-\log(0.8)}{3}\approx0.7675.`) +
+        p('The tool’s fail token influenced the context of the final answer but contributes no direct target loss in this example. Predicting edit is also evaluated before fail exists in the prefix. Keeping the one-position shift visible prevents a training row from accidentally reading its own next-token target.') +
+        definition('2.1', 'A <strong>loss mask</strong> assigns each target position a coefficient indicating whether its prediction contributes to the objective. With binary mask '+math('m_t')+' and per-target loss '+math(String.raw`\ell_t`)+', a token-mean loss is '+math(String.raw`L=\sum_t m_t\ell_t/\sum_t m_t`)+', provided at least one target is selected.') +
+        p('The denominator determines weighting. Combining all selected tokens across a batch gives longer answers more influence. Averaging each example’s selected losses first gives examples equal influence. Our repair might contain a short edit and a very long explanation, so the reduction can affect which part dominates the update.') +
+        p('Backpropagation now follows the selected losses into the shared parameters. The gradient-descent construction is the one already developed in the learning essay. What we have added is a precise account of the predictions whose gradients enter it.') +
+        source('Review parameter updates and loss behavior', misc+'#learning-efficiency') +
+        p('This mask is one illustrative supervised construction. Rufus-Air documents assistant-only supervised loss. The exact template, selected positions, and reduction must be taken from the particular recipe being reproduced.') +
+        source('Rufus-Air supervised setup', rufus),
     },
     {
-      id: 'supervised-data', title: 'Which tokens should the example teach?',
+      id: 'supervised-data', title: 'Turning a repair into a training task',
       body:
-        p('An assistant-training record usually contains more than the answer we want it to imitate. It may include instructions, a user request, a tool invocation, and a tool result. These positions help determine the next prediction. Their role as context does not require every position to contribute a training loss.') +
-        p('Take a chosen record containing ten token positions. Two belong to a system message, two to the user, three to an assistant action, two to a tool result, and one to the assistant’s final answer. If we train on the assistant positions, four targets contribute to the objective while the other six positions supply context.') +
-        table(['Part of the record', 'Positions', 'Loss-bearing targets'], [['System message', '2', '0'], ['User message', '2', '0'], ['Assistant action', '3', '3'], ['Tool result', '2', '0'], ['Assistant answer', '1', '1'], ['Total', '10', '4']], 'A hand-chosen loss mask') +
-        p('Let '+math(String.raw`m_t`)+' equal one for a target included in training and zero otherwise. Let '+math(String.raw`\ell_t`)+' be its negative log-probability. A token-mean objective over this record is') +
-        equation(String.raw`L=\frac{\sum_t m_t\ell_t}{\sum_t m_t}.`) +
-        p('The denominator matters when examples have different answer lengths. Averaging all selected tokens gives longer answers more weight in the aggregate. Averaging each example first gives examples equal weight even when their selected lengths differ. Neither convention can be inferred from the phrase “batch size” alone.') +
-        p('Packing several records into one physical sequence can reduce padding. Their attention boundaries must still match the intended examples. Chat templates and masks must also agree with the model’s generation format. A malformed boundary can teach an output under a context that the model will never receive at deployment.') +
-        p('Rufus-Air describes assistant-only loss masking and packed supervised training. Its later stages start from the resulting checkpoint. This gives a concrete reason to inspect what the supervised data already teaches before attributing all later behavior to reinforcement learning.') +
-        source('Rufus-Air supervised training and infrastructure', rufus),
+        p('A demonstration cannot cover every useful repair. We may instead have an initial repository, an instruction, and tests capable of checking a result. Let the current model attempt the work. It can obtain feedback even when no preferred action sequence has been written down.') +
+        p('The task needs a repeatable initial state. Two attempts should begin from the specified repository revision and dependencies. Their file changes and processes should be isolated. Otherwise a patch left by one attempt can become an unrecorded hint or an obstacle for another.') +
+        p('The verifier also needs its own scope. A failing test before the repair helps establish that there is something to fix. A passing test afterward supplies evidence about the tested behavior. Additional checks can catch regressions outside that case. An instruction asking for a narrow change leaves quality questions that one binary pass result may not resolve.') +
+        table(['Episode boundary', 'Record for our repair', 'Why it affects learning'], [
+          ['Initialization', 'Repository revision, dependencies, task', 'Defines the state the policy receives'],
+          ['Action', 'Generated command or edit', 'Identifies what the model chose'],
+          ['Observation', 'Tool output and resulting files', 'Determines the next permitted input'],
+          ['Termination', 'Completion, budget exhaustion, or infrastructure abort', 'Determines whether the intended outcome was observed'],
+          ['Grading', 'Raw tests and any additional scoring', 'Supplies the outcome used by the learning rule'],
+        ], 'A chosen repair episode before any reinforcement-learning formula') +
+        p('Task construction can accidentally expose its answer. A committed solution, generated cache, or accessible grading artifact can provide a shortcut. A policy repeatedly optimized for the score has reason to find such paths. The environment and verifier therefore belong in the training specification.') +
+        p('The MiMo public release supplies different task environments, verifiers, harness integrations, and launch scripts. Its code-task documentation calls for anti-hack cleanup when preparing the environment.') +
+        source('Released environments and preparation settings', code) +
+        p('For the numerical development, give a completed repair return 1 if it passes our chosen tests and 0 otherwise. This is a simplified binary scorer. We can now ask what four attempts at the same task tell the learner.'),
     },
     {
-      id: 'rewarded-attempts', title: 'Learning from several attempts',
+      id: 'rewarded-attempts', title: 'From graded attempts to a token’s learning signal',
       body:
-        p('A demonstration gives us a target sequence. Now suppose we have a task and a verifier but no written solution. The current model can attempt the task several times. Each attempt produces a trajectory of generated actions and, eventually, a return from the verifier.') +
-        p('Consider four attempts at the same task. Their binary returns are 0, 1, 1, and 0. The group mean is 0.5. Subtracting this mean from each return gives −0.5, 0.5, 0.5, and −0.5. The successful attempts receive positive relative signals, while the others receive negative ones.') +
+        p('Suppose four attempts produce returns 0, 1, 1, and 0. Their mean is 0.5. Subtracting it gives −0.5, 0.5, 0.5, and −0.5. Successful attempts receive a positive relative signal, and unsuccessful attempts receive a negative one.') +
         study('advantage') +
-        p('For this first calculation, call the return of attempt '+math(String.raw`i`)+' '+math(String.raw`R_i`)+' and the number of attempts '+math(String.raw`G`)+'. We use a mean-only group baseline,') +
-        equation(String.raw`\bar R=\frac1G\sum_{i=1}^{G}R_i,\qquad A_i=R_i-\bar R.`) +
-        p('The difference '+math(String.raw`A_i`)+' is an advantage estimate for this construction. It can weight a log-probability term for generated actions. Gradient ascent on a positive-weighted log probability makes those actions more likely locally. A negative weight reverses that direction. This connects the verifier’s episode-level feedback to an update of the model’s output distribution.') +
-        p('The sampled actions were generated by particular weights. After those weights change, their current probabilities may differ. A policy update can compare the current probability with the recorded sampling probability, using their ratio to account for the source of the data. Clipping or otherwise limiting that correction constrains how strongly an individual sample can drive the update.') +
-        p('Normalization, loss reduction, and clipping alter this simple construction. They need their own numerical account before a full algorithm is compressed into one objective. An all-pass or all-fail group has zero differences under our baseline. Its generation consumed resources, but this particular relative signal provides no distinction among its attempts.') +
-        p('MiMo-V2.6 reports a batch of 1,568 prompts with 16 rollouts each. That is 25,088 trajectories before the subsequent processing. It uses GRPO with asynchronous partial rollouts. These settings make collection, filtering, and the age of an experience consequential parts of each update.') +
-        source('MiMo-V2.6 RL settings and objective', mimo),
+        p('Let '+math('R_i')+' be attempt '+math('i')+'’s return and '+math('G')+' the group size. The calculation above defines a mean-only baseline and its advantage,') +
+        equation(String.raw`\bar R=\frac{1}{G}\sum_{i=1}^{G}R_i,\qquad A_i=R_i-\bar R.`) +
+        p('We can associate a successful attempt’s positive advantage with its generated token log probabilities. Increasing those log probabilities locally favors the sampled actions. A negative coefficient reverses the local direction. The episode’s outcome has supplied a way to weight predictions without prescribing a complete reference answer.') +
+        p('If every return is equal, these differences are zero. The group consumed generation and grading work, but the mean-only baseline provides no distinction within it. A richer scorer can distinguish different successful repairs, and a collection policy can seek tasks on which attempts vary. Any such change also changes the data or signal used by the learner.') +
+        '<h3>Keep the probability recorded when the action was sampled</h3>' +
+        p('Our successful edit was generated before the latest update. For one of its tokens, suppose the rollout model assigned probability '+math('q=0.1')+'. The learner now assigns the same token probability '+math('p=0.12')+' under its recorded prefix. Their ratio is '+math('r=p/q=1.2')+'. It describes how the token’s probability has changed since collection.') +
+        p('MiMo uses per-token learner-to-rollout probability ratios held fixed during differentiation. It masks ratios outside separately controlled intervals for positive and negative advantages, initialized to [0.2, 5], and uses prompt-mean aggregation.') +
+        source('MiMo policy optimization rule', mimo) +
+        study('policy') +
+        p('For our positive advantage '+math('A=0.5')+', ratio 1.2 is inside the stated initial interval, so its mask '+math('M')+' equals one. Multiplying '+math('M r A')+' gives 0.6. That is the coefficient multiplying this token’s log-probability gradient in the isolated term.') +
+        p('Move the learner probability to 0.6 in the figure. The ratio becomes six, outside the initial positive interval, and the mask becomes zero. The term supplies no gradient under that mask. The example exposes the rule’s boundary while keeping the sampled action and its recorded probability fixed.') +
+        p('Writing '+math(String.raw`\operatorname{sg}`)+' for “use this value without differentiating through it,” the term we have examined is') +
+        equation(String.raw`J_{\mathrm{token}}=\operatorname{sg}(M r A)\log p,\qquad \frac{\partial J_{\mathrm{token}}}{\partial\log p}=M r A.`) +
+        p('A full training step aggregates many such terms and may modify the episode advantages. This example isolates one positive-advantage coefficient at the reported initial bounds. It does not reproduce all grading, masking, entropy control, or aggregation choices in the run. To evaluate the complete update, those choices must be specified together.'),
     },
     {
-      id: 'agent-experience', title: 'What an agent trajectory contains',
+      id: 'agent-experience', title: 'Preserving the episode that produced the signal',
       body:
-        p('A code-repair episode can begin with a task and an initialized working tree. The model chooses a command, the environment executes it, and the resulting output becomes context for another action. Files and processes persist between turns. The final test result grades an episode that may have contained many such interactions.') +
-        p('We need to retain which tokens the model actually generated. A rendered transcript is convenient for reading, but reconstructing token sequences later can alter boundaries or formatting. Sampling probabilities must remain paired with the actions they describe. Tool observations provide context, while loss masks identify the model-generated positions to which the learning rule applies.') +
-        p('The termination reason also carries information. A completed repair that fails its tests is a policy outcome. A broken sandbox or an unavailable grader prevents us from observing that outcome as intended. Treating every infrastructure interruption as a zero reward can change both the return and the group baseline.') +
-        p('Rufus-Air records token trajectories directly and separates aborted infrastructure samples before advantage computation. Its agent infrastructure also keeps an environment alive for a trajectory’s lifetime. These decisions affect the training signal as well as reliability.') +
-        source('Rufus-Air agentic RL environment', rufus) +
-        p('Different tasks need different verifiers. Executable tests can check a program’s behavior. A learned judge may assess a response against a rubric. A visual task may require rendering and inspecting an artifact. In each case we should follow the raw observation into the final score and ask which errors or shortcuts that scoring procedure can detect.') +
-        p('The released MiMo reproduction code provides environment-specific launch scripts, data references, model references, and harness integration. Its coding configuration defaults to eight nodes with eight GPUs each. The smaller 9B checkpoint supplies a concrete starting model for those experiments; an adapted small-cluster run would still need an explicit memory, length, and concurrency configuration.') +
-        source('MiMo released training code and configurations', code),
+        p('The coefficient above depends on a particular sampled token, its prefix, its sampling probability, and its feedback. A readable transcript is useful for inspecting a repair. A training record must preserve the exact alignment among these quantities.') +
+        p('Imagine repairing a malformed tool call before executing it. The environment may then succeed because of an action the model never sampled. If the altered call is stored as the model’s action, the learner receives a false account of what earned the return. The original and any repair should remain distinguishable in the record.') +
+        p('Rufus-Air records token IDs directly with log probabilities, loss masks, and expert-routing metadata. It passes those records through to training and keeps infrastructure aborts apart from completed policy outcomes.') +
+        source('Rufus-Air token fidelity and environment records', rufus) +
+        p('For our repair, a test failure after a valid run is an observed outcome. A test worker disappearing before it reports a result leaves that intended outcome unknown. Giving both the same zero return can alter the group mean and penalize actions for an infrastructure event. Termination reasons let the training pipeline apply its actual policy for missing outcomes.') +
+        p('The same distinction matters within a group. If one of four attempts is aborted, silently treating it as a failed repair leaves a four-member baseline. Excluding it creates a different group and denominator. A reproducible record states which attempts were included, and whether the group was discarded or replenished.') +
+        p('Tool observations remain context for later actions. Loss masks determine where feedback applies. A policy version identifies the weights that generated a segment. The episode record joins these pieces so that the learner can compute the quantity the objective asks for.') +
+        p('Once records are valid, we still need to collect the intended mixture of them. Our code repair may take much longer than another task in the same run.'),
     },
     {
-      id: 'collecting-a-mixture', title: 'The scheduler changes the learning mixture',
+      id: 'collecting-a-mixture', title: 'Collecting the batch the recipe asked for',
       body:
-        p('Suppose we want equal numbers of accepted episodes from two task sources. Episodes from the first take one unit of time. Episodes from the second take four. We have ten concurrent rollout slots, and for this example every completed episode is accepted.') +
-        p('Allocate five slots to each source. After four time units, the fast source has completed twenty episodes and the slow source has completed five. Equal concurrency has produced a four-to-one collection. If we update on whichever episodes arrive, that completion pattern can determine the data the learner sees.') +
-        p('Allocate two slots to the fast source and eight to the slow one. After four units each source has completed eight episodes. The same ten slots now produce the requested equal mixture. A source’s share of occupied slots and its share of completed training examples are different quantities.') +
+        p('Suppose we want equal numbers of accepted episodes from two task sources. In our chosen model, one source takes one time unit per episode and the other takes four. Ten rollout slots are available, and every completed episode is accepted.') +
+        p('Give each source five slots. After four units, the fast source has completed twenty episodes and the slow source five. Updating from the completions as they arrive would expose the learner to a four-to-one mixture.') +
+        p('Give the fast source two slots and the slow one eight. After the same four units, each has completed eight episodes. We have used the same ten slots to supply a different learning mixture.') +
         study('mixer') +
-        p('We can express the account without assuming these particular durations. Suppose source '+math(String.raw`i`)+' should provide '+math(String.raw`\lambda_i`)+' accepted groups per time unit. Let '+math(String.raw`r_i`)+' be the fraction of generated groups accepted and '+math(String.raw`t_i`)+' the mean time a generated group occupies its slot. Generating '+math(String.raw`\lambda_i/r_i`)+' groups per time unit then requires, in a steady-state approximation,') +
-        equation(String.raw`c_i\approx\frac{\lambda_i t_i}{r_i}`) +
-        p('concurrent occupied slots. The formula follows by counting generated groups and multiplying by their occupied time. Lower acceptance increases required generation. Longer episodes increase required concurrency. At a fixed resource budget the scheduler must reconcile those demands, with estimates that may change as the policy learns.') +
-        p('MiMo’s Sample Mixer addresses unequal task durations and filtering rates with adaptive collection and placement. Its failure analysis describes early short completions biasing length estimates and contributing to exhausted KV pools. The order in which observations become available can therefore affect the scheduler’s view of the workload.') +
-        source('MiMo Sample Mixer and failure analysis', mimo) +
-        p('A trace of this process should distinguish work in model generation from work in tools, work waiting for grading, and accepted groups waiting for a training batch. A queue that looks like spare inference capacity may be occupied by long-lived environments whose state will soon return to the model.'),
+        p('Filtering adds another cost. If only half of a source’s completed groups are usable, it needs twice as many generated groups to supply the same accepted rate. Let '+math(String.raw`\lambda_i`)+' be the desired accepted groups per unit time, '+math('r_i')+' the accepted fraction, and '+math('t_i')+' the mean time a generated group occupies a slot. The steady-state concurrency estimate is') +
+        equation(String.raw`c_i\approx\frac{\lambda_i t_i}{r_i}.`) +
+        p('We obtain it by counting '+math(String.raw`\lambda_i/r_i`)+' generated groups per unit time and multiplying by their occupied time. It assumes stable averages. Startup, correlated long episodes, changing policies, and finite buffers can make short intervals depart substantially from that estimate.') +
+        p('MiMo reports 1,568 prompts with sixteen rollouts each, or 25,088 trajectories, and uses a Sample Mixer to adapt collection to durations and filtering. Its failure analysis describes early short completions biasing length estimates and exhausting KV pools.') +
+        source('MiMo batch settings, Sample Mixer, and failure analysis', mimo) +
+        p('The first completions are a selected sample of the work in flight. Measuring only those can underestimate how much memory the unfinished episodes will require. For our repair source, a scheduler should retain information about running work as well as completed work before revising its length budget.') +
+        p('Faster serving can improve collection. It can also change which source finishes first. The batch composition must therefore be checked after a serving change, even if the task-selection probabilities were left alone.'),
     },
     {
-      id: 'learner-and-rollout', title: 'Keeping experience attached to its policy',
+      id: 'learner-and-rollout', title: 'Refreshing the policy while episodes continue',
       body:
-        p('The learner and rollout engine need different execution arrangements. The learner retains activations and optimizer state for gradient computation. The rollout engine generates sequences and retains attention state. Alternating those uses on the same devices requires state movement. Separating them allows overlap but introduces weight synchronization and experience generated by older policies.') +
-        p('A partial episode can outlive an update. Its early and late actions may therefore have been sampled under different policy versions. The training record needs enough information to identify the sampling distribution of each action. Otherwise a probability ratio can silently compare the learner with the wrong reference.') +
-        p('Precision and implementation also enter the comparison. A rollout engine and a training engine can use different kernels, reductions, or numerical formats. In an MoE model, a small difference can change expert selection. Matching a model name and a checkpoint path is insufficient to establish that the recorded and recomputed token probabilities agree.') +
-        p('Rufus-Air describes replaying sampled expert-routing choices during the training forward pass. MiMo-V2.6 reports freezing its router during RL. These interventions act on different sources of instability and should be examined against their own measurements.') +
-        source('Rufus-Air rollout routing replay', rufus) +
-        source('MiMo router stability', mimo) +
-        p('This is where the <a href="../serving/">serving essay</a> meets training. Faster generation can collect more experience, but the training system still has to deliver the intended mixture with valid probability metadata. The relevant trace follows both the parameter versions moving toward generation workers and the trajectories moving back toward the learner.'),
+        p('A long repair can outlive the time needed to collect another batch. Waiting for every attempt keeps some workers idle. Continuing collection while the learner updates introduces another issue. Some actions now belong to an older policy.') +
+        p('In a partial-rollout design, an unfinished episode can resume after an update. Its earlier tokens retain their earlier sampling probabilities. Its later tokens can come from the refreshed rollout weights. Recomputing every sampling probability under the latest weights would erase the information needed by the ratio in §4.') +
+        table(['Segment of our chosen episode', 'Sampling weights', 'Record retained for training'], [
+          ['Initial inspection and edit', 'Version 10', 'Exact tokens and probabilities from version 10'],
+          ['Tool execution', 'No model sampling', 'Observation and environment state'],
+          ['Continuation after refresh', 'Version 11', 'Exact new tokens and probabilities from version 11'],
+          ['Learner evaluation', 'Version 12', 'Current probabilities paired with each recorded segment'],
+        ], 'Illustrative policy versions within one partial episode') +
+        p('Revised weights also change attention state. A continuation needs KV state compatible with the policy now evaluating its prefix. MiMo describes re-prefill after policy updates in its partial-rollout design. Generation, state reconstruction, and learning therefore compete for the same overall training budget.') +
+        p('MiMo also freezes its MoE router during RL after observing unstable expert loads. This addresses a parameter-drift problem alongside the need to align training and inference calculations.') +
+        source('MiMo partial rollouts and router stability', mimo) +
+        p('Precision and kernels can affect that alignment. The rollout engine and learner may perform different reductions or use different formats. A small numerical change can alter an MoE choice or the set of tokens considered by sampling. Probability comparisons need the corresponding implementation details, as well as a checkpoint name.') +
+        p('Rufus-Air describes replaying sampled expert choices in the training forward pass. That intervention preserves a recorded route for the calculation being compared. Freezing router parameters and replaying a route answer different operational questions.') +
+        source('Rufus-Air routing replay', rufus) +
+        p('The serving essay follows retained state while a deployed model answers requests. Here that state participates in a changing-policy experiment. The lifetime of a reusable prefix ends at a different boundary when the model weights change.') +
+        source('Follow session state through a serving cluster', '../serving/#memory-and-work'),
     },
     {
-      id: 'reading-a-run', title: 'What changed during the run?',
+      id: 'reading-a-run', title: 'What changed, and what can we reproduce?',
       body:
-        p('After an update, a rising training reward tells us that the policy is scoring better under the sampled tasks and their scoring procedure. We still need held-out measurements to determine which capabilities changed. The evaluation should retain the checkpoint, sampling settings, harness, budget, and scorer associated with each result.') +
-        p('A sequence of training stages makes attribution harder. Each stage modifies parameters inherited from the previous one. A later result can reflect new learning and the loss of an earlier gain. Comparing adjacent checkpoints on the same measurements helps locate the change. Missing intermediate evaluations leave a gap that a final score alone cannot fill.') +
-        p('Rufus-Air documents a sequential recipe and discusses limits on attributing intermediate-to-final changes. The authors describe practical and empirical reasons for their chosen stage order. Those observations belong with the particular stages and measurements that support them.') +
-        source('Rufus-Air stagewise results and discussion', rufus) +
-        p('An execution trace can reveal behavior the aggregate task score misses. Xiaomi’s analysis of tool-call repetition follows a concrete post-release failure back through training checkpoints and examines the penalty used for excessive calls. It supplies a case for asking whether a verifier rewards completion while overlooking a costly way of reaching it.') +
-        source('MiMo tool-call repetition analysis', 'https://mimo.xiaomi.com/blog/mimo-v2-6-tool-call-repetition') +
-        p('For a training experiment we can inspect, we should preserve raw returns, termination reasons, episode lengths, accepted-group counts, clipping statistics, parameter versions, and held-out results. These let us distinguish a change in the policy from a change in the data collected or the environment that scored it. A checkpoint then comes with an account of how it was produced and what was actually measured.'),
+        p('Return to the repair’s purpose. We wanted future attempts to make useful, valid changes more often. A higher training reward can reflect that improvement, a narrower adaptation to the verifier, or a change in the examples collected. We need checkpoints evaluated under recorded, comparable conditions to distinguish them.') +
+        p('The evaluation principles are developed in Miscellaneous Topics. For this run, keep task identities, environments, model versions, generation budgets, and graders attached to each checkpoint result. Check both completion and the behavior used to reach it. A final total alone cannot locate a regression introduced by an earlier stage.') +
+        source('Review experimental conditions and benchmark selection', misc+'#frontier-release') +
+        p('Xiaomi’s tool-call repetition investigation supplies a concrete example. It traced problematic calls across RL checkpoints and examined a per-turn flooding penalty triggered above 32 calls. Lowering the threshold to eight in a separate experiment suppressed flooding, with limited generalization to other repetition cases. Flooding and exact duplicate calls were measured separately.') +
+        source('MiMo’s post-release repetition investigation', repetition) +
+        p('A task score can therefore improve while a costly behavior remains weakly constrained. For our repair, we would inspect repeated commands, unnecessary files touched, failed tool calls, and time spent reaching the passing test. Those observations help identify which part of the scoring procedure needs investigation.') +
+        '<h3>Read the released experiment before choosing a reproduction</h3>' +
+        p('The public MiMo fork provides a distilled Qwen-based 9B training checkpoint, five environment families, and launch scripts. Its code path combines a harness, model gateway, trajectory capture, and a verifier. Reproducing that released experiment requires their versions and configuration together.') +
+        source('MiMo released training framework and smaller-model recipe', code) +
+        table(['Artifact to preserve', 'Question it lets us answer'], [
+          ['Starting checkpoint and tokenizer', 'Which policy and input representation began the experiment?'],
+          ['Data, environment, and verifier revisions', 'Which task and feedback produced each sample?'],
+          ['Batch, masks, reduction, and optimizer settings', 'Which computation produced the parameter update?'],
+          ['Raw episode metadata and failure reasons', 'Which outcomes entered the learning signal?'],
+          ['Held-out tasks and per-checkpoint results', 'Which gains and regressions survived evaluation?'],
+        ], 'A reproduction record for the selected experiment') +
+        p('The smaller released run and the production-scale report have different starting models and resource requirements. A reduced experiment can test a particular mechanism, such as masking or task collection, when those choices are stated. Its observed result then belongs to that configuration.') +
+        p('A reproduction can preserve the first batch’s raw records and calculated coefficients alongside the checkpoint it produces. Another reader can then inspect how the selected episodes entered the update before comparing the resulting task behavior.'),
     },
   ],
   sources: [
-    ['MiMo-V2.6 technical report', mimo],
-    ['MiMo training code, mimo-oss branch', code],
+    ['MiMo-V2.6 report, version 1', mimo],
+    ['Rufus-Air recipe, version 2', rufus],
+    ['MiMo released training framework', code],
     ['MiMo released RL environments', 'https://huggingface.co/datasets/XiaomiMiMo/MiMo-V2.6-RL-oss'],
-    ['MiMo distilled 9B checkpoint', 'https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Distill-Qwen-9B'],
-    ['Rufus-Air post-training recipe', rufus],
-    ['MiMo tool-call repetition analysis', 'https://mimo.xiaomi.com/blog/mimo-v2-6-tool-call-repetition'],
+    ['MiMo distilled training checkpoint', 'https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Distill-Qwen-9B'],
+    ['MiMo tool-call repetition investigation', repetition],
   ],
 };

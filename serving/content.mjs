@@ -1,146 +1,161 @@
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
-const deepinfer = 'https://github.com/deepseek-ai/DeepInfer/blob/main/doc/inference_deployment_qa.md';
-const cluster = 'https://llm-d.ai/docs/dev/well-lit-paths/models/glm-5-2';
-const routing = 'https://llm-d.ai/blog/sticky-until-saturated-token-aware-routing';
+const deployment = 'https://github.com/deepseek-ai/DeepInfer/blob/main/doc/inference_deployment_qa.md';
+const measured = 'https://llm-d.ai/blog/serving-glm-5-2-agentic-workloads-on-llm-d';
+const topology = 'https://llm-d.ai/docs/dev/well-lit-paths/models/glm-5-2';
+const offloading = 'https://docs.nvidia.com/dynamo/v1.6.1/knowledge-base/modular-components/backends/v-llm/native-kv-offloading';
+const misc = '../miscellaneous/';
 
 export const serving = {
   slug: 'serving',
   title: 'Serving LLMs',
   heading: 'Serving<br><em>language models.</em>',
-  subtitle: 'A prompt arrives. Other people are already waiting. What should the machines do next?',
-  description: 'A reading prototype on LLM execution, scheduling, cache reuse, real GPU clusters, and the cost of delivering generated tokens.',
+  subtitle: 'Follow a coding session through model calls, tool waits, cached state, and the machines sharing its work.',
+  description: 'A continuous investigation of agent serving, cache lifetimes, queueing, physical GPU placement, and performance evidence, with DeepInfer and llm-d case studies.',
   hero: 'request',
+  overviewLabel: 'Open the session map',
   companion: {slug: 'training', title: 'Training and post-training'},
   introduction:
-    p('Consider a coding assistant examining a repository. It reads a collection of files, proposes a change, runs a test, and receives the result. The next request contains much of the same conversation and a little new information. While the test runs, another person asks the service a short question. A third person submits a long document.') +
-    p('All three may use the same model, yet their requests place different demands on the machines. The long document needs substantial initial processing. The returning assistant may be able to reuse a previous calculation. A person already receiving an answer cares about the gaps between its successive pieces. A serving system has to arrange this work while each request occupies memory and competes with the others.') +
-    p('The model supplies a calculation for predicting another token. A service must decide when that calculation runs, which requests share an execution, where their retained state lives, and how the result returns to the caller. These decisions determine how much of the available hardware becomes useful work and how long a person waits.') +
-    p('We will begin with one request, then introduce arrivals, memory limits, and returning conversations. Small, stated workloads let us inspect the consequences of a decision. Published deployments provide the physical setting in which those decisions have to work. The order follows the construction of a contemporary service.') +
-    p('The transformer, causal attention, and next-token generation are assumed from <a href="../foundations/">Foundations</a>. The cache, precision, and speculation essays in <a href="../transformers/">Transformers in Practice</a> supply the underlying model operations. Here we account for their execution across requests and machines. Readers who want to investigate a result can follow the original report, change the example, or inspect the implementation linked beside it.'),
+    p('Consider asking a coding assistant to repair a failing test. It reads the repository, makes an edit, and runs the test. While the test is executing, the model has nothing new to generate. A little later, the result returns and the assistant asks the model what to do next. To us this is one piece of work. The model service receives several requests, with a pause between them.') +
+    p('That pause creates an awkward choice. Keeping the earlier calculation in GPU memory can make the next turn cheaper, but occupies space that another session could use now. Moving it elsewhere frees that space and creates a future transfer. Discarding it leaves a future calculation. The service has to choose before it knows exactly when the session will return.') +
+    p('We will stay with this repair as other sessions arrive, memory fills, and the work spreads across machines. Each change gives us a reason to examine another part of the service. Hand-chosen examples make the accounting visible. Published deployments let us test whether the same pressures matter in an actual cluster.') +
+    p('The background explanations of <a href="'+misc+'#request-scheduling">continuous batching</a>, <a href="'+misc+'#cache-systems">cache allocation and prefix sharing</a>, and <a href="'+misc+'#gpu">GPU memory</a> are in Miscellaneous Topics. We will recall what each construction provides when we use it. <a href="../transformers/">Transformers in Practice</a> develops the model operations, including cached generation and speculative decoding.'),
   sections: [
     {
-      id: 'one-request', title: 'Following one request',
+      id: 'one-request', title: 'One session, several requests',
       body:
-        p('Suppose the assistant sends the service a conversation ending with a test failure. The input first has to become the sequence the model expects. Messages and tool definitions are rendered with the model’s chat template, then converted to token IDs. The ordered IDs determine the model inputs. A change to the template can therefore change the calculation even when the visible conversation looks similar.') +
-        p('The initial forward evaluation processes the supplied positions. In causal attention, the representation at an earlier position cannot depend on a later position. Keys and values computed for the earlier positions can consequently be retained for an extension. This initial processing is called <em>prefill</em>. Its final position supplies the distribution used for the first output token.') +
-        p('After that token is selected, it becomes the input at the next position. The model computes the new row at each layer while reading the permitted retained keys and values. Repeating this operation extends the output. This is the <em>decode</em> phase. The cache grows with the generated sequence according to the model’s attention architecture.') +
-        p('The service can return decoded text pieces as generation proceeds. The first visible piece and the last visible piece occur at different times, and pauses between pieces can matter throughout the answer. A person watching a stream may notice a stall that an average tokens-per-second number conceals.') +
-        definition('1.1', 'The <strong>time to first token</strong> is the elapsed time from a stated request start to the first returned output token. An <strong>inter-token latency</strong> is the elapsed time between successive returned output tokens. The start boundary and the treatment of buffering belong with either measurement.') +
-        p('This gives us a first way to examine a slow request. We can locate the delay before admission, during input preparation, in prefill, in a decode step, or in returning the result. An execution trace should retain those boundaries. Otherwise a fast model kernel can appear to explain a request whose time was actually spent elsewhere.') +
-        source('vLLM execution and serving implementation', 'https://github.com/vllm-project/vllm'),
+        p('The harness is the program keeping track of the repair. It sends the conversation to a model service, executes the returned tool calls, and includes their results in later requests. The opening map follows those messages. Its vertical lines belong to the harness, service, and tool environment. A horizontal arrow is a message passing between them.') +
+        p('On the first call, the service renders the messages with the model’s chat template and converts the result to token IDs. Prefill processes the supplied positions. Decode then extends the response using retained attention state. The assistant’s edit and test invocation return to the harness, which starts the test in the repository environment.') +
+        p('The next model call cannot include a test result that has not arrived. During that wait, the environment can be busy while the model service runs other sessions. Once the test fails, the harness appends the result. An identical earlier prefix may be reusable, while the new observation still requires processing.') +
+        p('We therefore need to retain two kinds of continuity. The harness records the task and what happened in the repository. The serving system may retain compatible numerical state for repeated model inputs. A durable task record allows reconstruction after a cache miss. A reusable cache saves some of that reconstruction work.') +
+        source('The model and harness loop', misc+'#harnesses') +
+        p('We can measure a model call from its arrival to its first returned token, then measure the gaps between later tokens. We can also measure the repair from the original instruction to a checked result. Tool execution and dependencies between calls contribute to this second clock. Improving one decode interval helps only the portion of the repair that depends on it.') +
+        definition('1.1', 'A <strong>session</strong> is the continuing unit of work whose requests share a task and accumulated state. A <strong>request</strong> is one invocation of the model service. The session’s completion criterion and the request’s timing boundaries must be stated when measuring either.') +
+        p('A plausible first design sends every returning call to the worker that handled the previous one. This preserves locality as long as the state survives there. Before adopting that rule, we need to account for the memory occupied while the test is running.'),
     },
     {
-      id: 'memory-and-work', title: 'What occupies the machine',
+      id: 'memory-and-work', title: 'State during the tool pause',
       body:
-        p('Before another request can join, its state needs somewhere to live. Model weights are shared across requests using that model instance. Each active sequence also has its own retained attention state. Temporary workspaces, communication buffers, and captured execution graphs occupy further memory. A scheduling decision must fit all of these at once.') +
-        p('Take a deliberately small memory account. A hypothetical device has 16 GiB available, weights occupy 8 GiB, and the execution workspace occupies 2 GiB. Assume each admitted request currently needs 32 MiB of KV state. Here one GiB is 1,024 MiB. The remaining 6 GiB can hold at most') +
-        equation(String.raw`\frac{6\cdot1024\ \mathrm{MiB}}{32\ \mathrm{MiB/request}}=192\ \mathrm{requests}.`) +
-        p('That count is a capacity bound under the chosen assumptions. Actual sequences have different lengths and continue to grow. Reserving memory only for their current length can force a later eviction or recomputation. Reserving every possible future position can leave most of the device unused. Allocating state in blocks allows physical placement to follow demand while a table preserves logical sequence order.') +
-        p('Suppose a lower-precision weight representation reduces the weight allocation to 4 GiB, with the other quantities held fixed. The same arithmetic now gives 320 requests. The freed memory has several possible uses. It can admit more active sequences, keep more idle prefixes reusable, or accommodate replicated experts. Which allocation helps depends on the work that arrives next.') +
-        p('Memory capacity and memory bandwidth answer different questions. Capacity asks whether the data fits. Bandwidth asks how quickly the required bytes can be read and written. A decode step may touch a large weight set for a small number of new token rows. Combining several rows into one matrix multiplication can reuse those weight reads. As the batch grows, arithmetic and communication can become the limiting resources.') +
-        p('We should therefore account for both the bytes resident on the device and the bytes moved during a step. Lower precision can change both, while introducing numerical error. A meaningful comparison records the format, its scales, and the evaluation results alongside its memory and timing gains.') +
-        source('PagedAttention and KV memory management', 'https://arxiv.org/abs/2309.06180'),
+        p('Suppose we keep a private 0.5 GiB of state for each session. In a chosen steady workload, two new sessions begin each second. Each uses the model for five seconds and then waits ten seconds for its tool, retaining that state throughout. We are counting one lifetime per session to isolate the effect of the pause.') +
+        p('Without the pause, about ten such lifetimes overlap. Including it makes the retained lifetime fifteen seconds, so about thirty overlap. At 0.5 GiB each, the average occupied memory rises from 5 GiB to 15 GiB. The number of tokens processed during the active part has stayed fixed.') +
+        study('residency') +
+        p('The calculation multiplies an arrival rate by a duration. Let '+math(String.raw`\lambda`)+ ' be the number of new sessions per second, '+math('T')+' their mean retained lifetime in seconds, and '+math('B')+' their constant private memory in GiB. Under this steady-state model,') +
+        equation(String.raw`\text{mean resident sessions}=\lambda T,\qquad \text{mean retained memory}=\lambda T B.`) +
+        p('For varying memory within a lifetime, we would first count how much memory the session holds over time, then average that quantity across arrivals. Shared physical prefix blocks require their own account because counting the same block separately for each session would overstate residency. A mean below capacity also leaves bursts to handle. Using this estimate for admission requires a separate allowance for bursts.') +
+        p('Our repair now has a reason to leave expensive GPU memory during the tool wait. A host-memory copy can preserve reuse while freeing space for active requests. The choice depends on the likely return time, the cost of moving the state, and the work saved on return.') +
+        p('In llm-d’s GLM-5.2 study, one 64-GPU run writes roughly 5 TB to CPU cache over 24 minutes and performs no restores because active prefixes still fit in HBM. Its provisioned NVMe tier receives no reads in those measurements.') +
+        source('Observed cache-tier use', measured) +
+        p('A configured tier can therefore be doing preparatory work before its additional capacity is needed. To judge it, we would record writes, restores, evictions, and avoided recomputation as concurrent sessions increase. A capacity diagram alone would hide when the tier begins to help.') +
+        p('The test has now finished. Our session returns alongside others. Whether the prefix survived will affect both its own work and the queue behind it.'),
     },
     {
-      id: 'arriving-requests', title: 'When another request arrives',
+      id: 'arriving-requests', title: 'The clock the client sees',
       body:
-        p('A single request leaves little choice about who runs next. Several requests create a scheduling problem. To isolate that choice, suppose prefill has already finished and the machine can advance at most two requests during each unit of decode time. A arrives at time 0 and needs three tokens. B arrives at time 1 and needs two. C arrives at time 2 and needs one.') +
-        table(['Request', 'Arrival', 'Decode tokens required'], [['A', '0', '3'], ['B', '1', '2'], ['C', '2', '1']], 'Chosen arrivals and output lengths') +
-        p('First run one request to completion before considering the next. A occupies the machine until time 3, B until time 5, and C until time 6. Their elapsed times from their own arrivals are 3, 4, and 4. The second available slot has done no work.') +
-        p('Now allow the active batch to change between iterations. A advances alone in the first interval. B joins at time 1. Both advance in the next two intervals and finish at time 3. C then uses a released slot and finishes at time 4. Their elapsed times are 3, 2, and 2. The operation at each occupied slot is unchanged. The admission and completion order have changed.') +
-        study('batch') +
-        p('The mean completion latency falls from 11/3 to 7/3 time units in this example. We have assumed that an iteration takes one unit regardless of occupancy and that every admitted request fits in memory. Those assumptions make the scheduling effect visible. Measurements on hardware must include how batch composition changes iteration time.') +
-        p('A new prompt adds another difficulty. A large prefill can occupy the execution stream for long enough to interrupt existing decodes. Breaking prefill into chunks gives the scheduler opportunities to admit other work between them. The chunk size then becomes a latency decision as well as a throughput decision. Tiny chunks add overhead. Large chunks leave longer uninterrupted waits.') +
-        p('A token count by itself need not predict the chunk’s duration. The context already present affects attention work, and experts can receive unequal token loads. A service can fit a cost model and choose work that stays within a step-time budget. The quantity being scheduled is estimated execution demand, with token counts supplying some of its inputs.') +
-        source('Chunked prefill and the throughput–latency tradeoff', 'https://www.usenix.org/system/files/osdi24-agrawal.pdf'),
+        p('Take four simultaneous returning sessions sharing one prefill processor. Our session is fourth. In this chosen workload, each old prefix takes six seconds to recompute, followed by 0.4 seconds for new work before the first output. Processing one call occupies 6.4 seconds, so our session reaches its first output after 25.6 seconds.') +
+        p('Now suppose the same prefixes can be restored in 0.06 seconds each. Keep the 0.4 seconds of new work and the serial order fixed. Each call occupies 0.46 seconds, and the fourth reaches its first output after 1.84 seconds. The fourth call benefits from the work avoided for the preceding three as well as its own prefix.') +
+        study('queue') +
+        p('The diagram adds each request’s wait, prefix work, and new work. It uses a deliberately simple processor with no overlap. A real server may transfer state while another calculation runs, and several requests may execute together. Those details change the numerical result. The dependence of later waiting time on earlier work is already visible here.') +
+        p('In llm-d’s controlled restore-versus-recompute comparison, the no-offload configuration reports about 5.7 seconds of server processing once work begins, while client time to first token reaches 59 seconds with 97 requests queued. These aggregate timings are reported separately. Their difference does not identify an individual request’s queue time.') +
+        source('Client timing and server timing in the measured experiment', measured) +
+        p('For our repair, a fast output stream would not remove the wait before it started. A useful trace records request arrival, admission, prefix restoration or recomputation, first output, and completion. We can then ask which interval changed when a deployment improved.') +
+        p('Continuous batching supplies one mechanism for sharing execution. The existing scheduling essay works through its admission and completion arithmetic. Here the next question is placement. If the worker holding our prefix is busy, how long should we wait for it?') +
+        source('Review continuous batching and completion latency', misc+'#request-scheduling'),
     },
     {
-      id: 'returning-prefixes', title: 'The conversation returns',
+      id: 'returning-prefixes', title: 'Which worker should resume the session?',
       body:
-        p('The assistant’s test has finished. Its next request repeats the earlier conversation and appends the test result. If a worker retains compatible state for an identical prefix, it can continue from that calculation. The unchanged conversation now has a physical location in addition to its logical contents.') +
-        p('A cache entry must correspond to the relevant model, token sequence, positions, and execution settings. Reusing its state saves the work of constructing that state. It still occupies storage, must be found, and may need to be transferred. A retained conversation and its previously computed KV tensors are separate things the system manages.') +
-        p('Suppose the worker holding this prefix has a queue. We estimate a wait of 140 ms, followed by 20 ms to restore the prefix and 40 ms for the new suffix. Another worker has a 20 ms queue but would spend 300 ms computing the complete prompt, including the suffix. These are chosen estimates for a serial timing model.') +
+        p('Suppose the worker holding our prefix has an estimated 140 ms queue, a 20 ms restore, and 40 ms of new work. Another worker has a 20 ms queue and would spend 300 ms computing the whole input, including the suffix. These are a separate set of chosen estimates for comparing two destinations.') +
         study('routing') +
-        p('The warm worker’s estimated time is 200 ms. The cold worker’s is 320 ms. Increase the warm worker’s queue while keeping the other estimates fixed. At 260 ms of waiting the totals meet. Beyond that point, recomputation at the colder worker gives the earlier result in this model.') +
-        p('Call the warm queue wait '+math('W')+'. The decision follows directly from the operations we counted,') +
+        p('The first total is 200 ms and the second is 320 ms. Keeping all other estimates fixed, a warm-worker queue of 260 ms makes the totals equal. Call that queue '+math('W')+'. The decision we just made collects into') +
         equation(String.raw`W+20+40<20+300\quad\Longleftrightarrow\quad W<260\ \mathrm{ms}.`) +
-        p('Cache-aware routing must weigh reuse against congestion. Its estimates depend on what limits the workload. A queue of uncached input tokens helps describe pending prefill work. Active streams and their context lengths help describe decode demand. A cached prefix is valuable only in relation to the work it avoids and the waiting it creates.') +
-        p('Restoration can itself become the bottleneck. If each returning request needs many bytes from remote storage, arrival rate multiplied by bytes per request gives the required read bandwidth. DualPath studies a setting where storage interfaces at prefill workers saturate while decode workers have unused storage bandwidth. It uses another loading route through those workers. The computation avoided by caching has exposed a data-movement limit.') +
-        source('Cache affinity with a saturation threshold', routing) +
-        source('DualPath and the storage-bandwidth bottleneck', 'https://arxiv.org/abs/2602.21548'),
+        p('A locality rule needs a limit when it concentrates too much work on one destination. Its prediction should use the work actually pending there. Uncached input helps estimate prefill demand. Active streams and context lengths help describe decode demand. The estimate can be wrong, so its error belongs beside the resulting placement decisions.') +
+        source('llm-d token-aware routing and saturation', 'https://llm-d.ai/blog/sticky-until-saturated-token-aware-routing') +
+        p('There is another requirement hidden in “the worker holding our prefix.” The router must know where the state exists. Consider a block copied from GPU to CPU, then evicted from GPU. A directory that sees only the GPU eviction can conclude that the useful copy has disappeared.') +
+        table(['Event', 'Worker’s actual copies', 'What the router needs to learn'], [
+          ['Prefix computed', 'GPU', 'GPU copy available'],
+          ['Host copy completes', 'GPU and CPU', 'CPU copy available too'],
+          ['GPU copy evicted', 'CPU', 'Remove only GPU residency'],
+          ['CPU copy evicted', 'None', 'Remove CPU residency'],
+        ], 'One prefix block through a chosen sequence of cache events') +
+        p('Dynamo’s vLLM offloading integration documents this failure mode. Without CPU-tier events, local offloading can work while routing treats CPU-resident prefixes as misses. The event interface is part of the usable cache.') +
+        source('Dynamo cache events and routing visibility', offloading) +
+        p('Once restoration becomes common, storage bandwidth can limit arrivals. Multiply bytes restored per request by requests per second to estimate the required read rate. DualPath studies a deployment where prefill workers’ storage interfaces saturate and adds a loading route through decode workers and the compute network.') +
+        source('DualPath’s alternative KV-loading path', 'https://arxiv.org/abs/2602.21548') +
+        p('We now have a placement rule involving queues, state, and transfers. Giving those destinations physical locations exposes the links over which the transfers must travel.'),
     },
     {
-      id: 'physical-cluster', title: 'Where the request goes in a cluster',
+      id: 'physical-cluster', title: 'Putting the session on physical machines',
       body:
-        p('We can now put the scheduler and retained state on actual machines. The published llm-d GLM-5.2 deployment includes a configuration with eight nodes, each containing eight H200 GPUs. Three prefill replicas each span two nodes. A fourth, two-node replica performs decode. The allocation is 48 prefill GPUs and 16 decode GPUs.') +
+        p('The documented llm-d GLM-5.2 reference uses eight nodes with eight H200 GPUs each. Three prefill replicas span two nodes apiece, and one two-node replica performs decode. That is 48 prefill GPUs and 16 decode GPUs. Our session is routed to one prefill replica, then its KV state moves to decode.') +
         study('cluster') +
-        p('Follow one request through the drawing. The router chooses one prefill replica. Its GPUs cooperate on that request according to their parallel layout. Retained state is handed to the decode replica over the network. That replica advances the sequence and returns tokens. Other prefill replicas remain available for other requests.') +
-        p('The same published study also measures an allocation with two prefill and two decode replicas, using the same total GPU count. The comparison asks how much capacity to give each phase under its workload and latency requirements. Its tested infrastructure uses CoreWeave and InfiniBand, with NIXL transferring KV state between phases.') +
-        source('GLM-5.2 deployment topology and operating points', cluster) +
-        p('Several forms of parallelism coexist inside such a drawing. Data-parallel attention can keep different sequences’ state on different ranks. Expert parallelism distributes expert weights and sends a token’s features to the devices holding its selected experts. Tensor parallelism divides a calculation across devices. Pipeline parallelism assigns successive portions of the model to stages. Each changes both the work placement and the messages that must cross a link.') +
-        p('An MoE layer introduces a second placement decision after the model selects a logical expert. If the service holds several physical copies of that expert, it can distribute execution among them. The model’s selected function stays the same while its physical destination changes. Replicas can shorten an overloaded device’s tail, but their weights consume memory that could otherwise hold sequences or prefixes.') +
-        p('DeepSeek’s deployment description uses small expert-parallel groups for prefill and much wider ones for decode. It also separates vision encoding, prefill, decode, and persistent cache storage. Those choices make sense only with the per-expert batch, weight traffic, state footprint, and network topology in view. We should evaluate each movement in the physical graph against the saving that motivated it.') +
-        source('DeepSeek production deployment', deepinfer) +
-        source('Dispatching work across physical expert replicas', 'https://www.lmsys.org/blog/2026-06-26-waterfill-lplb'),
+        source('Documented 64-GPU topology and configuration', topology) +
+        p('A replica is a cooperating group of devices here. The model can divide attention work across different sequences while distributing expert weights across devices. At an MoE layer, selected token features must reach the devices holding their experts, and their results must return before the dependent calculation continues.') +
+        p('Imagine one layer with four ranks receiving 32, 12, 12, and 8 equal-cost work items. There are 64 items, or sixteen per rank on average. With equal processing rates and a synchronization after the layer, the rank with 32 determines completion. The quieter ranks cannot use their spare capacity unless some of that selected work has a valid destination there.') +
+        p('A redundant copy of a busy expert creates such a destination. The learned router still selects the logical function. A serving dispatcher can choose among its physical copies. In the idealized count above, balancing to sixteen items per rank halves the longest local work interval. Network transfers, kernel efficiency, and dispatch overhead determine how much of that saving survives.') +
+        p('The extra copy also occupies memory. If it displaces prefixes, later turns may need more restoration or recomputation. Expert placement and cache allocation consequently compete within the same memory budget. SGLang’s Waterfill and LPLB implementations provide concrete dispatch strategies to inspect at this point.') +
+        source('Physical expert copies and dispatch-time balancing', 'https://www.lmsys.org/blog/2026-06-26-waterfill-lplb/') +
+        p('Separating prefill from decode gives each pool its own resource allocation. It adds the transfer between them. DeepSeek’s deployment description uses different expert-parallel group sizes for the two phases, and persistent cache storage adds another path. The relevant comparison includes the execution saved and the traffic introduced.') +
+        source('DeepSeek production placement and cache paths', deployment) +
+        p('Our repair has reached decode. It can now trade additional work within a step for a chance to advance several tokens at once.'),
     },
     {
-      id: 'verification-budget', title: 'How much work should a step attempt?',
+      id: 'verification-budget', title: 'How much should a decode step attempt?',
       body:
-        p('Autoregressive generation requires a succession of model steps. A draft model can propose several tokens for the target to verify together. Accepted proposals allow one verification cycle to advance farther. The cycle also spends time producing drafts and evaluating proposals that may be rejected.') +
-        p('Consider chosen timings at one operating point. An ordinary step costs 20 ms and commits one token. A speculative cycle costs 3 ms to draft and 36 ms to verify, and commits three tokens on average. Its time per committed token is 39/3 = 13 ms. If verification instead costs 70 ms at a busier operating point, the same accepted length yields 73/3, about 24.3 ms per committed token.') +
-        p('Acceptance has remained the same while the execution cost has changed. Let '+math('C')+' be a cycle’s wall-clock duration and '+math('M')+' its committed token count. Under a stable repeated-cycle model, the long-run output rate is described by') +
-        equation(String.raw`\frac{\mathbb E[M]}{\mathbb E[C]}.`) +
-        p('Choosing the verification length therefore requires a cost estimate as well as a confidence estimate. Additional proposals compete with other requests for the verification budget. A sensible allocation spends work where the expected additional committed output justifies it at the current batch size.') +
-        p('The saving also has to survive the implementation. If a shorter proposal is padded back to the same execution size, reducing its logical length may leave the expensive computation intact. SGLang’s DSpark implementation uses compact variable-length verification and execution graphs keyed to the resulting work. The representation of the batch is part of the optimization.') +
-        source('DSpark confidence scheduling and compact verification', 'https://www.lmsys.org/blog/2026-07-06-dspark-sglang/') +
-        p('Between model steps, the CPU prepares metadata and interprets sampled results. A trace can show the GPU idle while that work runs. Overlapping preparation of the next step with the current device computation removes some of this gap. The dependencies still have to be respected. A decision that needs the latest device result cannot simply read that result early.') +
-        p('This gives another reason to inspect a full timeline. Fusing a kernel helps the interval containing that kernel. Reducing synchronization can shorten the gap around it. The two interventions affect different parts of the request’s critical path.'),
+        p('A draft model can propose a continuation for the target to verify. The mechanism and distribution-preserving checks are developed in Transformers in Practice. For this service, we need to decide how much verification work to give our session while other sessions are waiting.') +
+        p('Choose an ordinary step costing 20 ms and committing one token. A speculative cycle takes 3 ms to draft and 36 ms to verify, committing three tokens on average. That is 39/3 = 13 ms per committed token. At a busier operating point, suppose verification takes 70 ms with the same accepted length. The result becomes 73/3, about 24.3 ms per committed token.') +
+        p('Let '+math('C')+' denote a cycle’s duration and '+math('M')+' its committed token count. Under a stable repeated-cycle model, expected committed work divided by expected duration gives the long-run rate,') +
+        equation(String.raw`\text{output rate}=\frac{\mathbb E[M]}{\mathbb E[C]}.`) +
+        p('The current cost of verification matters alongside acceptance. An additional proposal competes with other requests for device time. A policy can allocate more work to proposals whose expected useful continuation justifies that cost.') +
+        p('That saving must appear in the executed batch. If shortened proposals are padded back to the old shape, the logical budget shrinks while much of the device work remains. SGLang’s DSpark integration uses compact variable-length verification and matching execution graphs to make trimming reduce execution.') +
+        source('DSpark verification budgets and executed shapes', 'https://www.lmsys.org/blog/2026-07-06-dspark-sglang/') +
+        p('A timing trace should also include CPU preparation between device steps. Metadata construction and decisions that await sampled results can leave the GPU idle. Overlap can hide independent preparation. A decision requiring the latest result still has to wait for it. The useful optimization depends on which dependency lies on our session’s path.') +
+        p('Once the assistant launches several investigations, those paths form a graph. Finishing one fast stream will no longer be enough to finish the repair.'),
     },
     {
-      id: 'operating-service', title: 'Keeping the service available',
+      id: 'operating-service', title: 'Parallel calls, interruptions, and recovery',
       body:
-        p('A deployment configured for a steady trace will eventually encounter different traffic. More people arrive, a shared document becomes popular, outputs become longer, or a device fails. The service has to change its allocation while requests are already in progress.') +
-        p('Adding a replica takes time. Weights must be available, placed on devices, and prepared for execution. Kernels may need compilation and graphs may need capture. Existing useful prefixes may live elsewhere. A newly allocated machine consequently has a different state from an already warm worker.') +
-        p('Scaling decisions should use the resource demand of the relevant phase. Additional uncached input creates prefill work. More active output streams create decode demand and retained state. A single fleet-wide GPU-utilization number can conceal an overloaded phase alongside an underused one.') +
-        p('Moving a running request also means moving enough state to continue it. Keeping its text permits reconstruction, which costs time. Transferring compatible retained state can avoid reconstruction, which costs bandwidth and coordination. A failure policy needs to specify which of these paths is available and how the client observes the interruption.') +
-        p('Cancellation matters for the same reason. Once the caller stops waiting, continuing a long generation consumes capacity that another request could use. Admission limits, cancellation, draining, and recovery belong in the service’s execution model. They determine which work remains valuable under changing demand.') +
-        source('Dynamo request, control, and state paths', 'https://docs.nvidia.com/dynamo/latest/knowledge-base/overview'),
+        p('Suppose the harness asks twenty parallel investigations for results and needs all twenty before proceeding. In a chosen independence model, each meets a deadline with probability 0.99. The probability that all meet it is') +
+        equation(String.raw`0.99^{20}\approx0.8179.`) +
+        p('About 81.8% of these groups meet the deadline under those assumptions. A shared queue or overloaded expert can correlate delays, changing that result. The calculation gives a reason to measure the group’s finishing time and its dependencies, alongside individual request percentiles.') +
+        source('Task dependencies and several agents', misc+'#multi-agent') +
+        p('If one investigation has already found what the harness needs, cancellation may release the others. That release has to reach the engine and allocator. A closed client stream by itself does not establish when device work or retained state was reclaimed.') +
+        p('A worker failure presents the same state question more sharply. The harness can resend recorded text, which permits reconstruction. A compatible KV copy elsewhere may shorten recovery. Either path needs a definition of which outputs were committed before interruption and how a resumed stream is joined to the earlier one.') +
+        p('Reconstruction can itself use an approximation. DeepInfer documents rebuilding sliding-window state from the latest 128 tokens with a truncated replay window. It identifies that rebuilt cache as approximate, while reusing the separate block cache.') +
+        source('DeepInfer bounded replay and its cache policy', deployment) +
+        p('To assess that choice for our repair, we would compare task success and output behavior after the same interruptions, then record recovery time and work. Exact reuse, recomputation, and bounded reconstruction provide different experimental conditions. The model revision and cache policy are part of the service being tested.') +
+        p('Adding machines also has a delay. Weights must become available, execution must be prepared, and useful prefixes may still live on older workers. A freshly allocated replica enters with a different state. Scaling based on uncached prefill work and active decode demand gives a more direct account of those needs than one fleet-wide utilization percentage.'),
     },
     {
-      id: 'measurements-and-providers', title: 'What a performance claim measures',
+      id: 'measurements-and-providers', title: 'Comparing services on completed work',
       body:
-        p('Suppose one configuration completes 100 requests per second, but only half meet the specified latency requirements. Another completes 80, with 90% meeting them. Under this chosen comparison, the first delivers 50 qualifying requests per second and the second delivers 72. Aggregate throughput has ranked them differently from useful capacity under the requirement.') +
-        definition('8.1', '<strong>Request goodput</strong> is the number of completed requests per unit time that satisfy a stated set of service requirements. The workload, latency boundaries, and qualifying conditions are part of its definition.') +
-        p('The load generator affects what we observe. A fixed-concurrency client waits for completions before sending replacement requests. A timestamped arrival trace can keep sending work while queues grow. These experiments answer different questions. Latency measured only after dispatch may omit time spent waiting to dispatch, especially when the client is itself throttling demand.') +
-        source('Effective latency and coordinated omission', 'https://docs.nvidia.com/aiperf/v0.13.0/reference/effective-vs-active-metrics') +
-        p('The output counter also needs inspection. DeepInfer’s example benchmark documents a decode-throughput calculation using full speculative acceptance accounting, irrespective of actual acceptance. Its profiling and measurement windows are separated because the profiler changes timing. A reproduction should retain those conventions and separately count committed output when answering a user-facing capacity question.') +
-        source('DeepInfer benchmark methodology', 'https://github.com/deepseek-ai/DeepInfer/blob/main/examples/README.md') +
-        p('Provider comparisons become clearer when the same request trace is carried through them. Record the model revision, numerical format when disclosed, prompt template, sampling settings, cache condition, region, arrival process, output lengths, and failures. Then relate the observed timings and charges to the operations the service exposes.') +
-        table(['Service or implementation', 'What the comparison can examine'], [
-          ['OpenAI, Anthropic, Google, DeepSeek, Mistral, xAI, Cohere', 'Model APIs, streamed behavior, cache accounting, quotas, and service tiers.'],
-          ['Together, Fireworks, DeepInfra, FriendliAI, Nebius, Novita, Hyperbolic, SiliconFlow', 'Hosted open-model inference, dedicated capacity, custom models, and published deployment details.'],
-          ['Baseten, Modal, Hugging Face Endpoints, Replicate, Runpod', 'Model packaging, cold starts, scaling, concurrency, and operating responsibility.'],
-          ['AWS, Google Cloud, Microsoft Foundry, Alibaba Cloud', 'Managed endpoints, reserved capacity, deployment placement, and infrastructure choices.'],
-          ['Groq, Cerebras, SambaNova', 'Different memory and execution architectures, measured at the same workload and requirements.'],
-          ['vLLM, SGLang, TensorRT-LLM, DeepInfer, Dynamo, llm-d', 'Inspectable execution, scheduling, routing, and state-management mechanisms.'],
-        ], 'Provider and implementation groups for the comparative study') +
-        p('An API’s price per token is one input to this account. For an agent task, the number of requests, repeated input, generated reasoning, tool waiting, retries, and successful completion also affect the cost. For dedicated hardware, paid idle capacity and the number of qualifying completions determine the effective cost per task. The request trace lets us connect these quantities to a deployment decision.') +
-        source('Hugging Face provider directory', 'https://huggingface.co/docs/inference-providers/index') +
-        source('Together deployment configurations and capacity-aware routing', 'https://www.together.ai/blog/configuring-dedicated-model-inference'),
+        p('Return to the repair we started with. The task is complete when the required change passes its checks. We can now compare deployments using the time and resources needed to reach that result, including repeated turns, tools, parallel calls, retries, and failures.') +
+        p('For request capacity, suppose one configuration completes 100 requests per second and half meet the required latency bounds. Another completes 80 and 90% qualify. They deliver 50 and 72 qualifying requests per second. The second serves more work under the stated requirement.') +
+        definition('8.1', '<strong>Request goodput</strong> is the number of completed requests per unit time satisfying a stated set of service requirements. Task goodput additionally needs a task completion criterion and a rule for counting the requests belonging to it.') +
+        p('The existing evaluation essays develop uncertainty, budgets, and matched comparisons. Here we need a workload record detailed enough to replay arrivals, repeated prefixes, and pauses. A fixed-concurrency client sends replacement work after completions. A recorded arrival trace can continue sending work while queues grow. These load experiments expose different behavior.') +
+        source('Experimental conditions and evaluation evidence', misc+'#frontier-release') +
+        table(['Workload probe', 'Record through the whole run', 'Decision it informs'], [
+          ['Short interactive calls', 'Queue-inclusive first-token time, stream gaps, errors', 'Responsiveness under competing arrivals'],
+          ['A returning coding session', 'Prefix overlap, cache tiers, tool pauses, complete repair time', 'Value of retention and locality'],
+          ['Parallel investigations', 'Arrival burst, dependency graph, cancellation, final completion', 'Capacity for the complete group'],
+          ['Interrupted work', 'Committed output, state recovered, replay policy, success', 'Recovery cost and behavior'],
+        ], 'Use the same specified workload when comparing providers or implementations') +
+        p('Input counters also need a common meaning. A logical prompt-token count includes the repeated prefix. Uncached tokens describe new computation. Bytes restored describe a transfer. Counting all three allows us to see whether a high input-token rate came from processing new material or reusing earlier work.') +
+        p('DeepInfer’s example benchmark documents full speculative-acceptance accounting for its decode-throughput number. A user-facing capacity comparison also needs the output actually committed. Keeping the original counter and its definition makes the reproduction auditable.') +
+        source('DeepInfer benchmark counters', 'https://github.com/deepseek-ai/DeepInfer/blob/main/examples/README.md') +
+        p('The provider study can carry these probes through model APIs such as OpenAI, Anthropic, Google, and DeepSeek; open-model hosts such as Together, Fireworks, DeepInfra, and FriendliAI; deployment platforms such as Baseten and Modal; and accelerator services such as Groq and Cerebras. For each tested endpoint, record its exact model, access tier, region, template, settings, prices, and observation date. Engine assignments that a provider has not disclosed remain unknown.') +
+        source('Hosted-provider starting points', 'https://huggingface.co/docs/inference-providers/index') +
+        p('For dedicated capacity, divide the full cost over the observation period by successful qualifying tasks, including idle periods and failed attempts. For an API, retain the billable categories across the same tasks. The earlier question about a cached prefix now reaches the final account through waiting time, transfers, repeated work, and the result the service delivered.'),
     },
   ],
   sources: [
-    ['DeepInfer deployment Q&A', deepinfer],
+    ['llm-d GLM-5.2 measurements', measured],
+    ['llm-d deployment configuration', topology],
+    ['llm-d token-aware routing', 'https://llm-d.ai/blog/sticky-until-saturated-token-aware-routing'],
+    ['Dynamo v1.6.1 native KV offloading', offloading],
+    ['DeepInfer deployment and replay', deployment],
     ['DeepInfer benchmark methodology', 'https://github.com/deepseek-ai/DeepInfer/blob/main/examples/README.md'],
-    ['llm-d GLM-5.2 deployment', cluster],
-    ['llm-d token-aware routing', routing],
     ['DualPath', 'https://arxiv.org/abs/2602.21548'],
-    ['SGLang DSpark implementation', 'https://www.lmsys.org/blog/2026-07-06-dspark-sglang/'],
-    ['SGLang expert-replica load balancing', 'https://www.lmsys.org/blog/2026-06-26-waterfill-lplb'],
-    ['NVIDIA Dynamo architecture', 'https://docs.nvidia.com/dynamo/latest/knowledge-base/overview'],
-    ['AIPerf effective and active metrics', 'https://docs.nvidia.com/aiperf/v0.13.0/reference/effective-vs-active-metrics'],
-    ['PagedAttention', 'https://arxiv.org/abs/2309.06180'],
-    ['Sarathi-Serve', 'https://www.usenix.org/system/files/osdi24-agrawal.pdf'],
+    ['SGLang expert dispatch', 'https://www.lmsys.org/blog/2026-06-26-waterfill-lplb/'],
+    ['SGLang DSpark', 'https://www.lmsys.org/blog/2026-07-06-dspark-sglang/'],
   ],
 };

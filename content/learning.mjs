@@ -90,7 +90,8 @@ export const learningEssays={
     p('The target weight is 1.5. The exact recurrence is '+m('w_{n+1}-1.5=(1-4\\eta)(w_n-1.5)')+', so a positive rate below 0.5 contracts the error in this particular quadratic. A rate above 0.5 sends it away from the target. The example isolates step size; it is not a model of the whole LLM training process.'))),
   section('convergence','Useful examples, useful updates',
    p('Data quality, data coverage, and the learning procedure affect how much progress a run obtains from its computation. Repeating a wrong solution can teach the wrong answer more thoroughly. Repeating a useful example may help initially and then add little. A new example can reveal a distinction absent from everything the model has seen.'),
-   p('A training run is therefore more than a count of operations. We want updates that improve performance on the intended tasks, with enough independent evidence to notice when they stop doing so. This leads to another way of obtaining examples: ask an existing model to produce them.'))
+   p('A training run is therefore more than a count of operations. We want updates that improve performance on the intended tasks, with enough independent evidence to notice when they stop doing so. This leads to another way of obtaining examples: ask an existing model to produce them.'),
+   p('For a complete training recipe, <a href="../training/">Training and post-training</a> follows MiMo-V2.6 from a starting checkpoint through assistant targets, graded agent episodes, and the batch that reaches the learner.'))
  ]},
  'synthetic-data':{refs:['distillation','reasoning'],sections:[
   section('teacher','Can a model supply the examples?',

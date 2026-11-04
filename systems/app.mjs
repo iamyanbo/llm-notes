@@ -158,6 +158,13 @@ export function initializeStudies(root, viewport) {
       dialog.querySelector('[data-dialog-close]').focus();
     });
   });
+  root.querySelectorAll('[data-study-open]').forEach(button => {
+    button.addEventListener('click', () => {
+      const figure = [...controllers.keys()].find(item => item.dataset.study === button.dataset.studyOpen);
+      figure.querySelector('[data-study-enlarge]').click();
+      returnFocus = button;
+    });
+  });
   dialog.querySelector('[data-dialog-close]').addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', restore);
   dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
