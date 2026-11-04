@@ -174,6 +174,11 @@ test('the enlarged view moves the same figure and restores its inspected state',
 });
 
 test('both prototypes have working reading entry points, references, and Foundations styles', async () => {
+  const player = await readFile('dist/systems/app.mjs', 'utf8');
+  const views = await readFile('dist/systems/views.mjs', 'utf8');
+  assert.match(player, /from '\.\/models\.mjs\?v=/);
+  assert.match(player, /from '\.\/views\.mjs\?v=/);
+  assert.match(views, /from '\.\/models\.mjs\?v=/);
   for (const slug of ['serving', 'training']) {
     const html = await readFile(`dist/${slug}/index.html`, 'utf8');
     const {document} = parseHTML(html);

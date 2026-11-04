@@ -15,6 +15,7 @@ export async function buildSystemEssays({root, output, siteUrl}) {
   const shared = path.join(output, 'systems');
   await mkdir(shared, {recursive: true});
   const digest = createHash('sha256');
+  digest.update(await readFile(new URL(import.meta.url)));
   for (const file of assets) {
     const source = path.join(root, 'systems', file);
     digest.update(await readFile(source));
@@ -26,6 +27,13 @@ export async function buildSystemEssays({root, output, siteUrl}) {
     .replace('../deepseek/site/trace-motion.mjs', '../deepseek/assets/trace-motion.mjs');
   await writeFile(path.join(shared, 'app.mjs'), deployedApp);
   const version = digest.digest('hex').slice(0, 12);
+  for (const file of assets.filter(name => name.endsWith('.mjs'))) {
+    const destination = path.join(shared, file);
+    const content = await readFile(destination, 'utf8');
+    const versioned = content.replace(/(\bfrom\s+)(['"])(\.{1,2}\/[^'"]+\.m?js)\2/g,
+      (_, from, quote, url) => `${from}${quote}${url}?v=${version}${quote}`);
+    await writeFile(destination, versioned);
+  }
   for (const essay of [serving, training]) {
     const destination = path.join(output, essay.slug);
     await mkdir(destination, {recursive: true});
