@@ -4,7 +4,6 @@ import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {applyFavicons} from './favicon.mjs';
 import {buildMiscellaneous} from './miscellaneous.mjs';
-import {buildSystemEssays} from './system-essays.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const config=JSON.parse(await readFile(path.join(root,'site.config.json'),'utf8'));
@@ -36,8 +35,7 @@ await writeFile(path.join(output,'index.html'),template.replaceAll('{{SITE_URL}}
 await cp(path.join(root,'site/styles.css'),path.join(output,'styles.css'));
 await applyFavicons(output);
 await buildMiscellaneous({root,output,siteUrl,config});
-await buildSystemEssays({root,output,siteUrl});
 await writeFile(path.join(output,'.nojekyll'),'');
 await writeFile(path.join(output,'robots.txt'),`User-agent: *\nAllow: /\nSitemap: ${siteUrl}/sitemap.xml\n`);
-await writeFile(path.join(output,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['','foundations/','transformers/','deepseek/','miscellaneous/','serving/','training/'].map(route=>`<url><loc>${escape(siteUrl+'/'+route)}</loc></url>`).join('')}</urlset>`);
+await writeFile(path.join(output,'sitemap.xml'),`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${['','foundations/','transformers/','deepseek/','miscellaneous/'].map(route=>`<url><loc>${escape(siteUrl+'/'+route)}</loc></url>`).join('')}</urlset>`);
 console.log('Built GitHub Pages site at '+siteUrl+'/');

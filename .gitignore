@@ -1,5 +1,6 @@
 node_modules/
 dist/
+draft-dist/
 **/dist/
 *.tar.gz
 .DS_Store

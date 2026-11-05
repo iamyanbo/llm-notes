@@ -81,15 +81,29 @@ test('the public source excludes source hosting identities and draft comment arc
     assert.ok(!content.includes('page-archive.json'));
   }
   const deepseekChapters=JSON.parse(await readFile('deepseek/chapters.json','utf8'));
-  assert.equal(htmlFiles.length,15+deepseekChapters.length+5);
+  assert.equal(htmlFiles.length,15+deepseekChapters.length+3);
   for(const forbidden of ['.openai','research','qa'])assert.ok(!(await readdir('deepseek')).includes(forbidden));
   const document=await documentFor(path.join(root,'index.html'));
   assert.ok(document.querySelector('a[href="foundations/"]'));
   assert.ok(document.querySelector('a[href="transformers/"]'));
   assert.ok(document.querySelector('.deepseek-card a[href="deepseek/"]'));
   assert.ok(document.querySelector('a[href="miscellaneous/"]'));
-  assert.ok(document.querySelector('#prototypes a[href="serving/"]'));
-  assert.ok(document.querySelector('#prototypes a[href="training/"]'));
+  assert.equal(document.querySelector('#prototypes'),null);
+});
+
+test('unapproved serving and training drafts are absent from the Pages artifact',async()=>{
+  for(const route of ['serving','training','systems']){
+    await assert.rejects(access(path.join(root,route)),{code:'ENOENT'});
+  }
+  const sitemap=await readFile(path.join(root,'sitemap.xml'),'utf8');
+  assert.doesNotMatch(sitemap,/\/(?:serving|training)\//);
+  for(const file of htmlFiles){
+    const document=await documentFor(file);
+    for(const link of document.querySelectorAll('a[href]')){
+      const url=new URL(link.getAttribute('href'),new URL(path.relative(root,file).replaceAll(path.sep,'/'),siteUrl));
+      if(url.origin===siteUrl.origin)assert.doesNotMatch(url.pathname,/\/(?:serving|training)\//);
+    }
+  }
 });
 
 test('every public page uses the same tab icon with existing SVG, PNG, and ICO files',async()=>{

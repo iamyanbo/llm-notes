@@ -3,6 +3,9 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
+const drafts=spawnSync(process.execPath,['scripts/draft-essays.mjs'],{cwd:root,stdio:'inherit'});
+if(drafts.error)throw drafts.error;
+if(drafts.status!==0)process.exit(drafts.status||1);
 for(const folder of ['foundations','transformers','deepseek','.']){
   const cwd=path.join(root,folder);
   const files=(await readdir(path.join(cwd,'tests'))).filter(f=>f.endsWith('.test.mjs')).map(f=>'tests/'+f);
