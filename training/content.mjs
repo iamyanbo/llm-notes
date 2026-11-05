@@ -1,3 +1,4 @@
+import {productionTrainingSections} from './production.mjs';
 import {trainingDepth} from './depth.mjs';
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
@@ -7,38 +8,38 @@ const code = 'https://github.com/XiaomiMiMo/verl/tree/mimo-oss';
 const repetition = 'https://mimo.xiaomi.com/blog/mimo-v2-6-tool-call-repetition';
 const misc = '../miscellaneous/';
 
-export const training = {
+const coreTraining = {
   slug: 'training',
   title: 'Training and post-training',
   heading: 'Teaching<br><em>a language model.</em>',
-  subtitle: 'Follow a code repair from a demonstration to a graded episode, then into the batch that changes a checkpoint.',
-  description: 'A motivated investigation of MiMo-V2.6 training, assistant loss masks, per-token policy weights, agent trajectories, task collection, and reproducible evidence.',
-  hero: 'training',
-  overviewLabel: 'Open the learning cycle',
+  subtitle: 'From corpus construction and distributed pretraining to optimizer transitions, post-training and release.',
+  description: 'A comparative treatment of corpus construction, pretraining budgets, distributed execution, AdamW/Muon/Muown, precision, preferences, RL and distillation across modern recipes.',
+  hero: 'recipe-map',
+  overviewLabel: 'Open the training and release map',
   companion: {slug: 'serving', title: 'Serving LLMs'},
   introduction:
-    p('Consider the coding session in the serving essay. The assistant edits a repository, runs its tests, and receives a failure. It can continue trying with the same weights. Training asks a further question. How could experience from repairs change the model so that future attempts are more likely to succeed?') +
-    p('A successful demonstration supplies actions to imitate. A test result supplies a judgment about an attempted repair. These give us different routes to a parameter update. In the second route, someone still has to define the task, run the environment, retain the generated actions, and turn the outcome into a learning signal.') +
-    p('MiMo-V2.6 is our main research case. We will follow the preparation of a starting checkpoint, the construction of training targets, and the collection of graded agent episodes. The opening cycle shows the part where attempts return to a learner and revised weights reach the rollout model. Its arrows carry tasks, actions, feedback, and parameters at different points in the process.') +
-    p('Miscellaneous Topics develops <a href="'+misc+'#learning-efficiency">gradient descent and generalization</a>, <a href="'+misc+'#synthetic-data">distillation</a>, and <a href="'+misc+'#harnesses">the harness loop</a>. We will use those explanations to investigate the decisions within a training recipe. Rufus-Air supplies a second, explicitly staged recipe where its design clarifies a choice. Small numerical examples below are authored calculations, with their inputs stated.'),
+    p('Consider the decisions behind a new model checkpoint. A team chooses the material it will learn from, the size of the model, the amount of training and the machines that will carry it out. Later it changes the data, context length or objective. A final export hides this history, even though those choices helped determine what the model can do.') +
+    p('The purpose of this essay is to follow that history. We begin with corpus construction and pretraining, place a training update on a distributed cluster, then examine optimizer and precision choices. Mid-training and supervised learning prepare a checkpoint for later feedback. Preferences, verifiers, learned rewards and teachers give different ways to continue changing it.') +
+    p('DeepSeek V4, Nemotron 3 Super, MiMo V2.6 and Rufus-Air provide complementary research cases. They disclose different choices and different amounts of the experiment. We will compare a decision where the evidence supports it, keeping each recipe’s data, architecture, scale and numerical conventions attached to its result.') +
+    p('The coding repair from the serving essay returns when we need a concrete demonstration and agent environment. It is one application of the training process. The opening map covers the larger route from retained data to a released model, including the stages before any agent can attempt that repair.') +
+    p('Foundations develops next-token likelihood and the chain rule through the transformer. Miscellaneous Topics develops <a href="'+misc+'#learning-efficiency">gradient descent and generalization</a>, <a href="'+misc+'#synthetic-data">synthetic data</a>, and <a href="'+misc+'#harnesses">the harness loop</a>. Small numerical examples here state their chosen inputs. Published training results retain their original sources.'),
   sections: [
     {
-      id: 'pretraining-and-midtraining', title: 'Where MiMo’s reinforcement learning begins',
+      id: 'pretraining-and-midtraining', title: 'Changing the recipe during mid-training',
       body:
-        p('Before we ask a model to learn from repairs, it must be able to attempt one. It needs enough language and code knowledge to read an instruction, produce an edit, and use the tools presented by its harness. A verifier can distinguish attempts only among the behaviors that the starting checkpoint generates.') +
-        p('MiMo reports text-only pretraining followed by joint multimodal training. Its mid-training develops agent behavior and extends context support before large-scale RL. Later distillation transfers behavior to smaller models.') +
-        source('MiMo-V2.6 stages', mimo) +
-        table(['Point in the recipe', 'What enters the learning process', 'What we need to inspect'], [
-          ['Pretraining', 'Recorded sequences and their next-token targets', 'Data mixture, objective, and checkpoint'],
-          ['Preparation for agent learning', 'Examples of actions, observations, and longer contexts', 'Which behaviors the checkpoint can already attempt'],
-          ['Reinforcement learning', 'Sampled episodes with feedback', 'How outcomes weight generated actions'],
-          ['Transfer to another model', 'Teacher examples or distributions', 'Student objective and independent evaluation'],
-        ], 'Questions we carry through the recipe; mechanisms and stage boundaries depend on the report') +
-        p('Imagine that our initial model rarely emits a valid test invocation. Rewarding a completed repair can leave almost every attempt at zero, even if successful repairs would be very valuable. Demonstrations can make the action format available before the verifier has enough useful variation to compare.') +
-        p('Rufus-Air places supervised fine-tuning before successive reasoning, coding, instruction-following, agent, and preference stages. The authors motivate their order through the capabilities already available and the reliability of rewards. Later stages update the same parameters, so earlier gains still need measurement.') +
-        source('Rufus-Air stage order and its limits', rufus) +
-        trainingDepth['pretraining-and-midtraining'] +
-        p('A stage name therefore leaves several questions open. Which exact tokens are targets? Which observations are context? How are examples weighted? The repair conversation lets us inspect those choices before we return to feedback from tests.'),
+        p('The earlier chapters separated data, optimization and numerical execution so that we could inspect each choice. A real stage boundary often changes several together. Mid-training is a useful name for continuing the broad foundation toward the contexts and behaviors later training will need. Its exact objective and boundary depend on the recipe.') +
+        p('MiMo first trains a language backbone and then integrates vision and audio. Its agent-centric mid-training combines trajectories with text and multimodal material while extending context. The optimizer and precision transitions discussed above occur within this larger change of regime.') +
+        source('MiMo pretraining and mid-training stages', mimo) +
+        p('A model that rarely emits a valid test invocation offers an agent verifier little useful variation. Demonstrations and trajectory data can make that behavior available before expensive reinforcement learning begins. Similarly, a long-context RL environment needs a checkpoint that can use its history before it can learn a good long-horizon strategy.') +
+        '<h3 id="context-extension">Context extension changes work, data and execution</h3>' +
+        p('Increasing a maximum-length setting does not show that a model can retrieve distant evidence or reason across it. The positional construction must support the new range, the training data must exercise useful long-distance dependencies, and evaluation must test more than a single memorized retrieval pattern.') +
+        p('Full attention also reads more pairs. If sequence length doubles, the triangular comparison count approaches four times its earlier value, while a fixed token budget contains fewer sequences. Local, sparse or recurrent architectures change that account. The parallel layout and batch schedule therefore need to follow the architecture actually being extended.') +
+        p('For a chosen global allowance of 1,048,576 tokens per update, using length 8,192 permits 128 full sequences. At length 65,536 it permits sixteen. The token total matches, but the number of independent sequences and the attention work differ. An unchanged token count does not preserve every property of the update.') +
+        p('NVIDIA’s released long-context phase uses a dedicated context-parallel layout and a small learning rate. It is a separate execution regime to inspect, with its own data and checkpoints. MiMo’s mid-training is another concrete example of preparing long-context capability before large-scale agent RL.') +
+        source('Nemotron long-context extension', 'https://docs.nvidia.com/nemotron/0.2.0/nemotron/super3/pretrain.html') +
+        '<h3 id="stage-boundary-evidence">Evaluate the boundary before attributing the result</h3>' +
+        p('Save the incoming and outgoing checkpoint identities, optimizer-state policy, data-mixture change, length schedule and numerical configuration. Evaluate both short- and long-context tasks. If several changes land together, an improvement cannot be attributed to one of them without an ablation or another controlled comparison.') +
+        p('After this preparation, a supervised stage can teach the assistant actions the next environment expects. We return to the coding conversation and follow exactly which predictions are selected, before comparing its supervision with preferences and sampled rewards.'),
     },
     {
       id: 'one-update', title: 'Which parts of the conversation should teach?',
@@ -50,7 +51,7 @@ export const training = {
         p('The negative log-probabilities are approximately 0.6931, 1.3863, and 0.2231. Averaging the three gives') +
         equation(String.raw`L=\frac{-\log(0.5)-\log(0.25)-\log(0.8)}{3}\approx0.7675.`) +
         p('The tool’s fail token influenced the context of the final answer but contributes no direct target loss in this example. Predicting edit is also evaluated before fail exists in the prefix. Keeping the one-position shift visible prevents a training row from accidentally reading its own next-token target.') +
-        definition('2.1', 'A <strong>loss mask</strong> assigns each target position a coefficient indicating whether its prediction contributes to the objective. With binary mask '+math('m_t')+' and per-target loss '+math(String.raw`\ell_t`)+', a token-mean loss is '+math(String.raw`L=\sum_t m_t\ell_t/\sum_t m_t`)+', provided at least one target is selected.') +
+        definition('7.1', 'A <strong>loss mask</strong> assigns each target position a coefficient indicating whether its prediction contributes to the objective. With binary mask '+math('m_t')+' and per-target loss '+math(String.raw`\ell_t`)+', a token-mean loss is '+math(String.raw`L=\sum_t m_t\ell_t/\sum_t m_t`)+', provided at least one target is selected.') +
         p('The denominator determines weighting. Combining all selected tokens across a batch gives longer answers more influence. Averaging each example’s selected losses first gives examples equal influence. Our repair might contain a short edit and a very long explanation, so the reduction can affect which part dominates the update.') +
         p('Backpropagation now follows the selected losses into the shared parameters. The gradient-descent construction is the one already developed in the learning essay. What we have added is a precise account of the predictions whose gradients enter it.') +
         source('Review parameter updates and loss behavior', misc+'#learning-efficiency') +
@@ -75,7 +76,7 @@ export const training = {
         p('The MiMo public release supplies different task environments, verifiers, harness integrations, and launch scripts. Its code-task documentation calls for anti-hack cleanup when preparing the environment.') +
         source('Released environments and preparation settings', code) +
         trainingDepth['supervised-data'] +
-        p('For the numerical development, give a completed repair return 1 if it passes our chosen tests and 0 otherwise. This is a simplified binary scorer. We can now ask what four attempts at the same task tell the learner.'),
+        p('For the numerical development, a completed repair will receive return 1 if it passes the chosen tests and 0 otherwise. Before following four such attempts, we compare that binary scorer with the other feedback a post-training recipe can use.'),
     },
     {
       id: 'rewarded-attempts', title: 'From graded attempts to a token’s learning signal',
@@ -101,6 +102,7 @@ export const training = {
     {
       id: 'agent-experience', title: 'Preserving the episode that produced the signal',
       body:
+        study('training') +
         p('The coefficient above depends on a particular sampled token, its prefix, its sampling probability, and its feedback. A readable transcript is useful for inspecting a repair. A training record must preserve the exact alignment among these quantities.') +
         p('Imagine repairing a malformed tool call before executing it. The environment may then succeed because of an action the model never sampled. If the altered call is stored as the model’s action, the learner receives a false account of what earned the return. The original and any repair should remain distinguishable in the record.') +
         p('Rufus-Air records token IDs directly with log probabilities, loss masks, and expert-routing metadata. It passes those records through to training and keeps infrastructure aborts apart from completed policy outcomes.') +
@@ -131,7 +133,7 @@ export const training = {
       id: 'learner-and-rollout', title: 'Refreshing the policy while episodes continue',
       body:
         p('A long repair can outlive the time needed to collect another batch. Waiting for every attempt keeps some workers idle. Continuing collection while the learner updates introduces another issue. Some actions now belong to an older policy.') +
-        p('In a partial-rollout design, an unfinished episode can resume after an update. Its earlier tokens retain their earlier sampling probabilities. Its later tokens can come from the refreshed rollout weights. Recomputing every sampling probability under the latest weights would erase the information needed by the ratio in §4.') +
+        p('In a partial-rollout design, an unfinished episode can resume after an update. Its earlier tokens retain their earlier sampling probabilities. Its later tokens can come from the refreshed rollout weights. Recomputing every sampling probability under the latest weights would erase the information needed by the <a href="#sampling-probability-record">recorded probability ratio</a>.') +
         table(['Segment of our chosen episode', 'Sampling weights', 'Record retained for training'], [
           ['Initial inspection and edit', 'Version 10', 'Exact tokens and probabilities from version 10'],
           ['Tool execution', 'No model sampling', 'Observation and environment state'],
@@ -151,7 +153,7 @@ export const training = {
     {
       id: 'reading-a-run', title: 'What changed, and what can we reproduce?',
       body:
-        p('Return to the repair’s purpose. We wanted future attempts to make useful, valid changes more often. A higher training reward can reflect that improvement, a narrower adaptation to the verifier, or a change in the examples collected. We need checkpoints evaluated under recorded, comparable conditions to distinguish them.') +
+        p('Return to the purpose of the training run. We wanted a model that performs useful tasks more reliably under the intended conditions. A better training loss, reward or teacher agreement is evidence about its own objective. Held-out evaluations and complete checkpoint provenance help determine which gains survive the next stage and the serving deployment.') +
         p('The evaluation principles are developed in Miscellaneous Topics. For this run, keep task identities, environments, model versions, generation budgets, and graders attached to each checkpoint result. Check both completion and the behavior used to reach it. A final total alone cannot locate a regression introduced by an earlier stage.') +
         source('Review experimental conditions and benchmark selection', misc+'#frontier-release') +
         p('Xiaomi’s tool-call repetition investigation supplies a concrete example. It traced problematic calls across RL checkpoints and examined a per-turn flooding penalty triggered above 32 calls. Lowering the threshold to eight in a separate experiment suppressed flooding, with limited generalization to other repetition cases. Flooding and exact duplicate calls were measured separately.') +
@@ -182,3 +184,14 @@ export const training = {
     ['Pinned public code-training launch script', 'https://github.com/XiaomiMiMo/verl/blob/79090e58195e80a9cfe251c95ae7a78a2132b6e2/scripts/code/train.sh'],
   ],
 };
+
+const trainingOrder=['corpus-construction','pretraining-budget','distributed-training','optimizer-families','precision-and-stability','pretraining-and-midtraining','one-update','supervised-data','posttraining-objectives','rewarded-attempts','exploration-and-curriculum','agent-experience','collecting-a-mixture','learner-and-rollout','distillation-and-release','reading-a-run'];
+const trainingChapters=new Map([...coreTraining.sections,...productionTrainingSections].map(section=>[section.id,section]));
+export const training={...coreTraining,sections:trainingOrder.map(id=>trainingChapters.get(id)),sources:[...coreTraining.sources,
+  ['DeepSeek V4 training and optimization','https://arxiv.org/html/2606.19348'],
+  ['Nemotron 3 Super pretraining recipe','https://docs.nvidia.com/nemotron/0.2.0/nemotron/super3/pretrain.html'],
+  ['Nemotron 3 Super staged RL recipe','https://docs.nvidia.com/nemotron/0.2.0/nemotron/super3/rl/index.html'],
+  ['Megatron Bridge parallelisms','https://docs.nvidia.com/nemo/megatron-bridge/latest/parallelisms.html'],
+  ['Muown optimizer research','https://arxiv.org/html/2605.10797'],
+  ['Direct Preference Optimization objective','https://arxiv.org/abs/2305.18290'],
+]};

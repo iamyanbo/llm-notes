@@ -1,3 +1,4 @@
+import {industrialSections} from './industry.mjs';
 import {servingDepth} from './depth.mjs';
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
@@ -7,31 +8,34 @@ const topology = 'https://llm-d.ai/docs/dev/well-lit-paths/models/glm-5-2';
 const offloading = 'https://docs.nvidia.com/dynamo/v1.6.1/knowledge-base/modular-components/backends/v-llm/native-kv-offloading';
 const misc = '../miscellaneous/';
 
-export const serving = {
+const coreServing = {
   slug: 'serving',
   title: 'Serving LLMs',
   heading: 'Serving<br><em>language models.</em>',
-  subtitle: 'Follow a coding session through model calls, tool waits, cached state, and the machines sharing its work.',
-  description: 'A continuous investigation of agent serving, cache lifetimes, queueing, physical GPU placement, and performance evidence, with DeepInfer and llm-d case studies.',
-  hero: 'request',
-  overviewLabel: 'Open the session map',
+  subtitle: 'Workloads, commercial inference fleets, execution engines, and the cost of delivering useful results.',
+  description: 'Industrial LLM serving from service contracts and fleet deployment to kernels, cache reuse, offline jobs, upgrades and provider case studies.',
+  hero: 'service-map',
+  overviewLabel: 'Open the service map',
   companion: {slug: 'training', title: 'Training and post-training'},
   introduction:
-    p('Consider asking a coding assistant to repair a failing test. It reads the repository, makes an edit, and runs the test. While the test is executing, the model has nothing new to generate. A little later, the result returns and the assistant asks the model what to do next. To us this is one piece of work. The model service receives several requests, with a pause between them.') +
-    p('That pause creates an awkward choice. Keeping the earlier calculation in GPU memory can make the next turn cheaper, but occupies space that another session could use now. Moving it elsewhere frees that space and creates a future transfer. Discarding it leaves a future calculation. The service has to choose before it knows exactly when the session will return.') +
-    p('We will stay with this repair as other sessions arrive, memory fills, and the work spreads across machines. Each change gives us a reason to examine another part of the service. Hand-chosen examples make the accounting visible. Published deployments let us test whether the same pressures matter in an actual cluster.') +
-    p('The background explanations of <a href="'+misc+'#request-scheduling">continuous batching</a>, <a href="'+misc+'#cache-systems">cache allocation and prefix sharing</a>, and <a href="'+misc+'#gpu">GPU memory</a> are in Miscellaneous Topics. We will recall what each construction provides when we use it. <a href="../transformers/">Transformers in Practice</a> develops the model operations, including cached generation and speculative decoding.'),
+    p('Consider a company putting language models into three products. A support assistant answers customers, a coding agent works through tools, and an overnight pipeline reads a large document collection. Their requests share model operations, but their users need different kinds of completion. A useful service has to deliver those results under limits on time, capacity, quality and cost.') +
+    p('Serving is the work of turning a checkpoint and a pool of machines into that service. It includes the contract offered at the API, admission under load, the execution engine, state retained between calls, the allocation of replicas, and recovery when something changes or fails. A fast isolated token stream establishes only one part of the result.') +
+    p('We will begin with the workload, follow requests through the execution path, and then examine the fleet that keeps that path available. The coding repair supplies a continuing multi-turn example. Document processing and retrieval expose different demands. Published cases from DeepInfra, Fireworks, Together, Baseten, Groq and Cerebras make the industrial choices concrete where their designs are disclosed.') +
+    p('Small authored calculations let us inspect a consequence before interpreting a measured deployment. Provider claims, announced systems, released configurations and our own examples have different evidential roles. The relevant source appears where each case is used. A current provider-wide benchmark is not claimed here.') +
+    p('The background explanations of <a href="'+misc+'#request-scheduling">continuous batching</a>, <a href="'+misc+'#cache-systems">cache allocation and prefix sharing</a>, and <a href="'+misc+'#gpu">GPU memory</a> are in Miscellaneous Topics. <a href="../transformers/">Transformers in Practice</a> develops the model operations, including cached generation and speculative decoding. Here those operations become parts of an operating service.'),
   sections: [
     {
       id: 'one-request', title: 'One session, several requests',
       body:
-        p('The harness is the program keeping track of the repair. It sends the conversation to a model service, executes the returned tool calls, and includes their results in later requests. The opening map follows those messages. Its vertical lines belong to the harness, service, and tool environment. A horizontal arrow is a message passing between them.') +
+        p('Our coding assistant reads a repository, proposes an edit and runs a test. While the tool executes, the model has nothing new to generate. When its result returns, the assistant asks what to do next. This is one continuing task and several model-service requests.') +
+        study('request') +
+        p('The harness is the program keeping track of the repair. It sends the conversation to a model service, executes the returned tool calls, and includes their results in later requests. The session diagram follows those messages. Its vertical lines belong to the harness, service, and tool environment. A horizontal arrow is a message passing between them.') +
         p('On the first call, the service renders the messages with the model’s chat template and converts the result to token IDs. Prefill processes the supplied positions. Decode then extends the response using retained attention state. The assistant’s edit and test invocation return to the harness, which starts the test in the repository environment.') +
         p('The next model call cannot include a test result that has not arrived. During that wait, the environment can be busy while the model service runs other sessions. Once the test fails, the harness appends the result. An identical earlier prefix may be reusable, while the new observation still requires processing.') +
         p('We therefore need to retain two kinds of continuity. The harness records the task and what happened in the repository. The serving system may retain compatible numerical state for repeated model inputs. A durable task record allows reconstruction after a cache miss. A reusable cache saves some of that reconstruction work.') +
         source('The model and harness loop', misc+'#harnesses') +
         p('We can measure a model call from its arrival to its first returned token, then measure the gaps between later tokens. We can also measure the repair from the original instruction to a checked result. Tool execution and dependencies between calls contribute to this second clock. Improving one decode interval helps only the portion of the repair that depends on it.') +
-        definition('1.1', 'A <strong>session</strong> is the continuing unit of work whose requests share a task and accumulated state. A <strong>request</strong> is one invocation of the model service. The session’s completion criterion and the request’s timing boundaries must be stated when measuring either.') +
+        definition('2.1', 'A <strong>session</strong> is the continuing unit of work whose requests share a task and accumulated state. A <strong>request</strong> is one invocation of the model service. The session’s completion criterion and the request’s timing boundaries must be stated when measuring either.') +
         servingDepth['one-request'] +
         p('A plausible first design sends every returning call to the worker that handled the previous one. This preserves locality as long as the state survives there. Before adopting that rule, we need to account for the memory occupied while the test is running.'),
     },
@@ -49,7 +53,7 @@ export const serving = {
         source('Observed cache-tier use', measured) +
         p('A configured tier can therefore be doing preparatory work before its additional capacity is needed. To judge it, we would record writes, restores, evictions, and avoided recomputation as concurrent sessions increase. A capacity diagram alone would hide when the tier begins to help.') +
         servingDepth['memory-and-work'] +
-        p('The test has now finished. Our session returns alongside others. Whether the prefix survived will affect both its own work and the queue behind it.'),
+        p('While the test is running, the service can execute other requests. Before following the returning queue, we need to inspect the engine that turns their model operations into device work.'),
     },
     {
       id: 'arriving-requests', title: 'The clock the client sees',
@@ -136,9 +140,9 @@ export const serving = {
     {
       id: 'measurements-and-providers', title: 'Comparing services on completed work',
       body:
-        p('Return to the repair we started with. The task is complete when the required change passes its checks. We can now compare deployments using the time and resources needed to reach that result, including repeated turns, tools, parallel calls, retries, and failures.') +
+        p('Return to each workload’s completion criterion. The repair ends when its required change passes the checks. The document job ends with valid records before its deadline. Compare deployments using the time and resources needed to deliver those results, including repeated turns, tools, parallel calls, retries and failures.') +
         p('For request capacity, suppose one configuration completes 100 requests per second and half meet the required latency bounds. Another completes 80 and 90% qualify. They deliver 50 and 72 qualifying requests per second. The second serves more work under the stated requirement.') +
-        definition('8.1', '<strong>Request goodput</strong> is the number of completed requests per unit time satisfying a stated set of service requirements. Task goodput additionally needs a task completion criterion and a rule for counting the requests belonging to it.') +
+        definition('14.1', '<strong>Request goodput</strong> is the number of completed requests per unit time satisfying a stated set of service requirements. Task goodput additionally needs a task completion criterion and a rule for counting the requests belonging to it.') +
         p('The existing evaluation essays develop uncertainty, budgets, and matched comparisons. Here we need a workload record detailed enough to replay arrivals, repeated prefixes, and pauses. A fixed-concurrency client sends replacement work after completions. A recorded arrival trace can continue sending work while queues grow. These load experiments expose different behavior.') +
         source('Experimental conditions and evaluation evidence', misc+'#frontier-release') +
         table(['Workload probe', 'Record through the whole run', 'Decision it informs'], [
@@ -169,3 +173,17 @@ export const serving = {
     ['NVIDIA matrix multiplication performance guide', 'https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/index.html'],
   ],
 };
+
+const servingOrder=['workloads-and-contracts','one-request','shared-and-dedicated','memory-and-work','model-execution','arriving-requests','returning-prefixes','physical-cluster','verification-budget','offline-and-online','operating-service','fleet-changes','provider-case-studies','measurements-and-providers'];
+const servingChapters=new Map([...coreServing.sections,...industrialSections].map(section=>[section.id,section]));
+export const serving={...coreServing,sections:servingOrder.map(id=>servingChapters.get(id)),sources:[...coreServing.sources,
+  ['DeepInfra production stack','https://deepinfra.com/blog/deepinfra-nvidia-inference-stack'],
+  ['DeepInfra Batch API','https://deepinfra.com/blog/batch-api'],
+  ['Fireworks service modes','https://docs.fireworks.ai/serverless/serverless-modes'],
+  ['Fireworks reserved throughput','https://docs.fireworks.ai/serverless/reserved-throughput'],
+  ['Fireworks autoscaling','https://docs.fireworks.ai/deployments/autoscaling'],
+  ['Together deployment configuration','https://www.together.ai/blog/configuring-dedicated-model-inference'],
+  ['Baseten autoscaling','https://docs.baseten.co/deployment/autoscaling/overview'],
+  ['Groq Flex service','https://console.groq.com/docs/flex-processing'],
+  ['AMD and Cerebras phase specialization announcement','https://investors.cerebras.ai/node/7256/pdf'],
+]};

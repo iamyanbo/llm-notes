@@ -2,7 +2,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {readFile} from 'node:fs/promises';
-import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, advanceStudy, chunkBudget, kvTransfer, specAllocation, outputUpdate, qualityAdvantages, groupFilter, reductionExample} from '../systems/models.mjs';
+import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, advanceStudy, chunkBudget, kvTransfer, specAllocation, outputUpdate, qualityAdvantages, groupFilter, reductionExample, fleetRamp, corpusExposure, optimizerGeometry, preferencePair} from '../systems/models.mjs';
+import {serving} from '../serving/content.mjs';
+import {training} from '../training/content.mjs';
 import {sceneFrame, studyFigure} from '../systems/views.mjs';
 import {createStudy, initializeStudies} from '../systems/app.mjs';
 
@@ -30,6 +32,69 @@ function harness(kind, reduced = false) {
   };
   return {document, window, figure, controller, click, frames, callbacks};
 }
+
+test('startup debt and later spare capacity account for the same admitted work', () => {
+  for(const startup of [0,15,60,120]){
+    const model=fleetRamp(startup);
+    assert.ok(model.drain>=0);
+    assert.equal(model.initial*startup+model.ready*model.drain,model.arrivals*model.clear);
+    assert.equal(model.backlog-model.surplus*model.drain,0);
+  }
+  assert.deepEqual([fleetRamp().backlog,fleetRamp().drain,fleetRamp().clear],[900,45,105]);
+});
+
+test('corpus sampling conserves the token budget while changing source exposures', () => {
+  for(const share of [10,50,90]){
+    const model=corpusExposure(share);
+    assert.ok(Math.abs(model.rows.reduce((sum,row)=>sum+row.drawn,0)-model.budget)<1e-12);
+    assert.ok(Math.abs(model.rows.reduce((sum,row)=>sum+row.unique*row.exposure,0)-40)<1e-12);
+  }
+  assert.deepEqual(corpusExposure(10).rows.map(row=>row.exposure),[0.4,0.4]);
+  assert.equal(corpusExposure().rows[0].exposure,2);
+  assert.ok(Math.abs(corpusExposure().rows[1].exposure-2/9)<1e-12);
+});
+
+test('the optimizer comparison preserves the stated first-step and polar-reference assumptions', () => {
+  const model=optimizerGeometry();
+  const determinant=matrix=>matrix[0][0]*matrix[1][1]-matrix[0][1]*matrix[1][0];
+  assert.equal(determinant(model.adam),0);
+  assert.equal(determinant(model.polar),1);
+  const root=Math.sqrt(0.5);
+  for(const [vector,value] of [[[root,root],7],[[root,-root],1]]){
+    const product=model.gradient.map(row=>row.reduce((sum,entry,index)=>sum+entry*vector[index],0));
+    product.forEach((entry,index)=>assert.ok(Math.abs(entry-value*vector[index])<1e-12));
+  }
+  model.gradient.forEach((row,i)=>row.forEach((gradient,j)=>{
+    const m=(1-0.9)*gradient/(1-0.9);
+    const v=(1-0.95)*gradient**2/(1-0.95);
+    assert.equal(m/Math.sqrt(v),model.adam[i][j]);
+  }));
+});
+
+test('the preference pair derivative agrees with normalized-probability finite differences', () => {
+  const initial=preferencePair();
+  const lossAt=margin=>{
+    const fraction=1/(1+Math.exp(-margin));
+    return preferencePair(0.6*fraction,0.6*(1-fraction)).loss;
+  };
+  const epsilon=1e-6;
+  const numerical=(lossAt(initial.margin+epsilon)-lossAt(initial.margin-epsilon))/(2*epsilon);
+  assert.ok(Math.abs(numerical-initial.derivative)<1e-8);
+  assert.ok(Math.abs(preferencePair(0.3,0.3).loss-Math.log(2))<1e-12);
+  assert.ok(lossAt(initial.margin+1)<initial.loss);
+  assert.ok(initial.derivative<0);
+});
+
+test('the broader routes retain old anchors and begin before agent execution', () => {
+  assert.equal(serving.sections[0].id,'workloads-and-contracts');
+  assert.equal(training.sections[0].id,'corpus-construction');
+  const servingIds=serving.sections.map(section=>section.id);
+  const trainingIds=training.sections.map(section=>section.id);
+  for(const id of ['one-request','memory-and-work','arriving-requests','returning-prefixes','physical-cluster','verification-budget','operating-service','measurements-and-providers','shared-and-dedicated','model-execution','offline-and-online','fleet-changes','provider-case-studies'])assert.ok(servingIds.includes(id));
+  for(const id of ['pretraining-and-midtraining','one-update','supervised-data','rewarded-attempts','agent-experience','collecting-a-mixture','learner-and-rollout','reading-a-run','pretraining-budget','distributed-training','optimizer-families','precision-and-stability','posttraining-objectives','exploration-and-curriculum','distillation-and-release'])assert.ok(trainingIds.includes(id));
+  assert.equal(serving.hero,'service-map');
+  assert.equal(training.hero,'recipe-map');
+});
 
 test('retention lifetime, serial prefix work, and queue crossover agree with the examples', () => {
   assert.equal(sessionMemory(0).memory, 5);
@@ -200,7 +265,7 @@ test('manual controls, scrubber and changed parameters remain tied to the numeri
 });
 
 test('new numerical controls reach model results and keep later parameter updates empty', () => {
-  for (const kind of ['chunk', 'transfer', 'speculation', 'gradient', 'filtering']) {
+  for (const kind of ['chunk', 'transfer', 'speculation', 'gradient', 'filtering', 'fleet', 'corpus']) {
     const {figure, controller, click, window} = harness(kind);
     const parameter = figure.querySelector('[data-study-parameter]');
     parameter.value = String(STUDIES[kind].parameter.max);
@@ -280,15 +345,16 @@ test('both prototypes have working reading entry points, references, and Foundat
   assert.match(player, /from '\.\/models\.mjs\?v=/);
   assert.match(player, /from '\.\/views\.mjs\?v=/);
   assert.match(views, /from '\.\/models\.mjs\?v=/);
-  for (const slug of ['serving', 'training']) {
+  for (const essay of [serving, training]) {
+    const slug=essay.slug;
     const html = await readFile(`dist/${slug}/index.html`, 'utf8');
     const {document} = parseHTML(html);
     assert.equal(document.querySelectorAll('h1').length, 1);
-    assert.equal(document.querySelectorAll('main>section').length, 10);
+    assert.equal(document.querySelectorAll('main>section').length, essay.sections.length + 2);
     assert.ok(document.querySelector('a[href="#introduction"]'));
     assert.ok(document.querySelector('link[href="../foundations/neobrutalism.css"]'));
     assert.ok(document.querySelector('button[data-study-open]'));
-    assert.equal(document.querySelectorAll('nav[aria-label="Contents"] details[data-contents-chapter]').length, 8);
+    assert.equal(document.querySelectorAll('nav[aria-label="Contents"] details[data-contents-chapter]').length, essay.sections.length);
     assert.ok(document.querySelectorAll('nav[aria-label="Contents"] a.toc-subsection').length >= 10);
     assert.equal(document.querySelectorAll('a.toc-subsection[href^="#figure-"]').length, 0);
     assert.ok(document.querySelector('a[href="../miscellaneous/"]'));

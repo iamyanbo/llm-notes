@@ -12,14 +12,6 @@ const f4 = groupFilter(0.9, 4);
 const f16 = groupFilter();
 
 export const trainingDepth = {
-  'pretraining-and-midtraining':
-    h('checkpoint-state', 'A continued training run starts with more than weights') +
-    p('Suppose two jobs load exactly the same model parameters and see the same next batch. If their optimizer states differ, their next parameters can differ too. An optimizer can retain momentum, squared-gradient statistics, a step counter, or a higher-precision parameter copy. Those values participate in the update.') +
-    p('For an authored momentum example, use '+m('v_{t+1}=0.9v_t+g_t')+' and '+m('w_{t+1}=w_t-0.1v_{t+1}')+'. Set the new gradient to one. A restored momentum of zero gives '+m('v_{t+1}=1')+' and a parameter change of −0.1. A restored momentum of ten gives '+m('v_{t+1}=10')+' and a change of −1. The model weights and new gradient can match while the optimization trajectory changes.') +
-    p('This makes a training restart a specification question. Which parameter representation is loaded? Which optimizer statistics are restored? Is the learning-rate schedule resumed or restarted? Which data records have already been consumed? Repeating an earlier batch with a later optimizer state need not reproduce its earlier update.') +
-    p('A mixed-precision job adds separate roles for the values. A low-precision representation can be used for a forward calculation while a master copy accumulates small updates. Quantization settings and conversion points affect what the forward pass actually sees. Merely retaining the low-precision export can lose information required for a faithful continuation.') +
-    p('The distinction becomes concrete when we read a released run. Its initialization, optimizer, and resume settings belong beside its starting checkpoint. If we deliberately reset a state, that reset is an experimental intervention whose effect can be measured. The later launch-script discussion identifies the settings used by the smaller public recipe.'),
-
   'one-update':
     h('loss-reduction', 'Choose which experimental unit receives equal weight') +
     p('Our three selected targets belonged to one conversation. A batch contains several conversations and may contain several rollouts for each prompt. “Average the loss” leaves open which of those units is being averaged.') +

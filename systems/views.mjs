@@ -1,4 +1,4 @@
-import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, chunkBudget, kvTransfer, specAllocation, outputUpdate, groupFilter} from './models.mjs';
+import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, chunkBudget, kvTransfer, specAllocation, outputUpdate, groupFilter, fleetRamp, corpusExposure, optimizerGeometry, preferencePair} from './models.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 const number = value => Number.isInteger(value) ? String(value) : value.toFixed(4);
@@ -454,7 +454,120 @@ function gradientFrame(step, options) {
   return frame('gradient',735,body,motion);
 }
 
-const renderers = {speculation: speculationFrame, filtering: filteringFrame, gradient: gradientFrame, chunk: chunkFrame, transfer: transferFrame, request: requestFrame, residency: residencyFrame, queue: queueFrame, routing: routingFrame, cluster: clusterFrame, training: trainingFrame, mask: maskFrame, policy: policyFrame, advantage: advantageFrame, mixer: mixerFrame};
+function overviewFrame(kind,step) {
+  const serving=kind==='service-map';
+  const nodes=serving?[
+    [28,40,220,'Application','workload and deadline','workloads-and-contracts'],
+    [360,40,240,'API gateway','account and admission','admission-and-quota'],
+    [690,40,240,'Routing','version, queue and state','returning-prefixes'],
+    [690,245,240,'Model execution','prefill, KV and decode','physical-cluster'],
+    [360,245,240,'Delivery','stream or batch output','offline-and-online'],
+    [28,245,220,'Evaluation','task, delay and cost','measurements-and-providers'],
+    [28,450,220,'Fleet control','replicas and upgrades','fleet-changes'],
+    [360,450,240,'Deployment recipe','weights, precision, engine','model-execution'],
+  ]:[
+    [28,40,220,'Corpus','retained data and mixture','corpus-construction'],
+    [360,40,240,'Pretraining','budget, layout, optimizer','pretraining-budget'],
+    [690,40,240,'Mid-training','context, data, precision','pretraining-and-midtraining'],
+    [690,245,240,'Demonstrations','assistant-target SFT','one-update'],
+    [360,245,240,'Policy learning','rewards and preferences','posttraining-objectives'],
+    [28,245,220,'Distillation','teacher and student histories','distillation-and-release'],
+    [28,450,220,'Checkpoint selection','held-out task evidence','checkpoint-selection'],
+    [360,450,240,'Release','versioned serving artifact','training-to-serving'],
+  ];
+  const paths=[[[248,82],[360,82]],[[600,82],[690,82]],[[810,124],[810,245]],[[690,287],[600,287]],[[360,287],[248,287]],[[138,329],[138,450]],[[248,492],[360,492]]];
+  let body=paths.map((points,index)=>`<g ${serving&&index>=5?'stroke-dasharray="6 5"':''}>${wire(points,kind)}</g>`).join('');
+  if(serving)body+=`<g stroke-dasharray="6 5">${wire([[600,492],[810,492],[810,329]],kind)}</g>`;
+  body+=nodes.map(([x,y,width,title,detail,id],index)=>`<a href="#${id}">${block(x,y,width,title,detail,index===step)}</a>`).join('');
+  body+=text(28,600,serving?'Solid arrows carry work or results. Dashed arrows describe fleet control.':'Follow a real recipe through these stages; some methods combine or repeat them.','scene-note');
+  const labels=serving?['request','route','execute','result','evidence','metrics','recipe']:['data','checkpoint','targets','feedback','teacher','candidate','artifact'];
+  return frame(kind,630,body,step?{points:paths[step-1],label:labels[step-1]}:null);
+}
+
+function fleetFrame(step,options) {
+  const model=fleetRamp(options.value);
+  let body=text(28,32,'Authored equal-cost requests. All work is queued while the new replica starts.','scene-note');
+  [[28,'Arrivals λ · /s',model.arrivals],[270,'Ready before μ₀ · /s',model.initial],[510,'Startup τ · s',model.startup],[750,'Ready after μ₁ · /s',model.ready]].forEach(([x,label,value])=>{body+=cell(x,105,180,label,value);});
+  body+=cell(28,300,245,'Deficit λ − μ₀: requests/s',step>=1?model.deficit:null,{warm:true,arrived:step===1});
+  body+=cell(345,300,245,'Backlog: deficit × τ',step>=2?model.backlog:null,{warm:true,arrived:step===2});
+  body+=cell(690,300,240,'Surplus μ₁ − λ: requests/s',step>=3?model.surplus:null,{warm:true,arrived:step===3});
+  body+=cell(28,510,425,'Drain time: backlog / surplus',step>=4?`${number(model.drain)} s`:null,{warm:true,arrived:step===4});
+  body+=cell(520,510,410,'Time to clear: startup + drain',step>=5?`${number(model.clear)} s`:null,{warm:true,arrived:step===5});
+  const motions={
+    1:{segments:[{points:[[118,143],[150,235]],label:model.arrivals,start:.04,end:.25},{points:[[360,143],[150,235]],label:`− ${model.initial}`,start:.34,end:.55},{points:[[150,235],[150,338]],label:model.deficit,start:.65,end:.86}]},
+    2:{segments:[{points:[[150,338],[467,235]],label:model.deficit,start:.04,end:.25},{points:[[600,143],[467,235]],label:`× ${model.startup}`,start:.34,end:.55},{points:[[467,235],[467,338]],label:model.backlog,start:.65,end:.86}]},
+    3:{segments:[{points:[[840,143],[810,235]],label:model.ready,start:.04,end:.25},{points:[[118,143],[810,235]],label:`− ${model.arrivals}`,start:.34,end:.55},{points:[[810,235],[810,338]],label:model.surplus,start:.65,end:.86}]},
+    4:{segments:[{points:[[467,338],[240,455]],label:model.backlog,start:.04,end:.25},{points:[[810,338],[240,455]],label:`÷ ${model.surplus}`,start:.34,end:.55},{points:[[240,455],[240,548]],label:model.drain,start:.65,end:.86}]},
+    5:{segments:[{points:[[600,143],[640,143],[640,455],[725,455]],label:model.startup,start:.04,end:.25},{points:[[240,548],[480,548],[480,455],[725,455]],label:`+ ${model.drain}`,start:.34,end:.55},{points:[[725,455],[725,548]],label:model.clear,start:.65,end:.86}]},
+  };
+  return frame('fleet',630,body,motions[step]||null);
+}
+
+function corpusFrame(step,options) {
+  const model=corpusExposure(options.value);
+  const [code,web]=model.rows;
+  let body=text(28,32,'All token quantities are billions. Exposures count average visits under shuffled cycling.','scene-note');
+  body+=cell(28,105,245,'Unique code tokens',code.unique);
+  body+=cell(345,105,245,'Unique web tokens',web.unique);
+  body+=cell(690,105,240,'Training-token budget',model.budget);
+  body+=text(28,245,`Code fraction ${code.share.toFixed(2)} · web fraction ${web.share.toFixed(2)}`,'row-label');
+  body+=cell(28,300,425,'Sampled code = budget × code fraction',step>=1?number(code.drawn):null,{warm:true,arrived:step===1});
+  body+=cell(520,300,410,'Sampled web = budget × web fraction',step>=2?number(web.drawn):null,{warm:true,arrived:step===2});
+  body+=cell(28,510,425,'Code visits = sampled / unique',step>=3?number(code.exposure):null,{warm:true,arrived:step===3});
+  body+=cell(520,510,410,'Web visits = sampled / unique',step>=4?number(web.exposure):null,{warm:true,arrived:step===4});
+  const motions={
+    1:{segments:[{points:[[810,143],[620,230]],label:model.budget,start:.04,end:.25},{points:[[145,240],[620,230]],label:`× ${code.share}`,start:.34,end:.55},{points:[[620,230],[240,338]],label:code.drawn,start:.65,end:.86}]},
+    2:{segments:[{points:[[810,143],[620,230]],label:model.budget,start:.04,end:.25},{points:[[385,240],[620,230]],label:`× ${web.share.toFixed(2)}`,start:.34,end:.55},{points:[[620,230],[725,338]],label:web.drawn,start:.65,end:.86}]},
+    3:{segments:[{points:[[240,338],[240,450]],label:code.drawn,start:.04,end:.25},{points:[[150,143],[480,143],[480,450],[240,450]],label:`÷ ${code.unique}`,start:.34,end:.55},{points:[[240,450],[240,548]],label:number(code.exposure),start:.65,end:.86}]},
+    4:{segments:[{points:[[725,338],[725,450]],label:web.drawn,start:.04,end:.25},{points:[[467,143],[620,143],[620,450],[725,450]],label:`÷ ${web.unique}`,start:.34,end:.55},{points:[[725,450],[725,548]],label:number(web.exposure),start:.65,end:.86}]},
+  };
+  return frame('corpus',630,body,motions[step]||null);
+}
+
+function optimizerFrame(step) {
+  const model=optimizerGeometry();
+  let body=text(28,32,'One chosen first-step gradient. Corrected Adam moments are G and the entrywise square G ⊙ G.','scene-note');
+  body+=matrixScene(28,115,'Gradient G',model.gradient,[0,1,2,3],[]);
+  body+=matrixScene(345,115,'Second moment G ⊙ G',model.squares,step>=1?[0,1,2,3]:[],step===1?[0,1,2,3]:[]);
+  body+=cell(690,115,240,'Singular values of G',step>=6?'7, 1':null,{warm:true,arrived:step===6});
+  body+=matrixScene(28,380,'Adam direction G / √(G ⊙ G)',model.adam,[0,1,2,3].filter(i=>step>=i+2),[0,1,2,3].filter(i=>step===i+2));
+  body+=matrixScene(690,380,'Exact polar direction UVᵀ',model.polar,step>=7?[0,1,2,3]:[],step===7?[0,1,2,3]:[]);
+  if(step>=6)body+=text(345,285,'G eigenvalues = 4 + 3, 4 − 3','scene-note');
+  if(step===7)body+=text(28,570,'Adam direction has rank 1. The polar reference has rank 2.','result-note');
+  let motion=null;
+  if(step===1)motion={segments:[0,1,2,3].flatMap(index=>{
+    const row=Math.floor(index/2),column=index%2;
+    return [{points:[[82+column*115,138+row*52],[300,260]],label:`${model.gradient[row][column]}²`,start:.02+index*.21,end:.1+index*.21},{points:[[300,260],[399+column*115,138+row*52]],label:model.squares[row][column],start:.12+index*.21,end:.2+index*.21}];
+  })};
+  if(step>=2&&step<=5){
+    const index=step-2,row=Math.floor(index/2),column=index%2;
+    body+=text(330,320,'÷','operator');
+    motion={segments:[{points:[[82+column*115,138+row*52],[340,305]],label:model.gradient[row][column],start:.04,end:.25},{points:[[399+column*115,138+row*52],[340,305]],label:`√${model.squares[row][column]}`,start:.34,end:.55},{points:[[340,305],[82+column*115,403+row*52]],label:1,start:.65,end:.86}]};
+  }
+  if(step===6)motion={segments:[{points:[[82,138],[810,235]],label:'4 + 3',start:.08,end:.4},{points:[[197,138],[810,235]],label:'4 − 3',start:.48,end:.68},{points:[[810,235],[810,153]],label:'7, 1',start:.74,end:.86}]};
+  if(step===7)motion={segments:[{points:[[810,153],[810,300]],label:'7, 1 → 1, 1',start:.08,end:.42},{points:[[810,300],[745,403]],label:'U Vᵀ',start:.52,end:.86}]};
+  return frame('optimizer',610,body,motion);
+}
+
+function preferenceFrame(step) {
+  const model=preferencePair();
+  let body=text(28,32,'A three-reply toy distribution. Only the displayed pair enters this loss. β = 0.5.','scene-note');
+  [[28,'Policy preferred',model.chosen],[270,'Policy rejected',model.rejected],[510,'Reference preferred',model.refChosen],[750,'Reference rejected',model.refRejected]].forEach(([x,label,value])=>{body+=cell(x,105,180,label,value);});
+  body+=cell(28,300,245,'Policy log odds',step>=1?number(model.policyOdds):null,{warm:true,arrived:step===1});
+  body+=cell(345,300,245,'Reference log odds',step>=1?number(model.referenceOdds):null,{warm:true,arrived:step===1});
+  body+=cell(690,300,240,'Margin Δ = difference',step>=2?number(model.margin):null,{warm:true,arrived:step===2});
+  body+=cell(28,510,425,'Pair loss −log σ(βΔ)',step>=3?number(model.loss):null,{warm:true,arrived:step===3});
+  body+=cell(520,510,410,'Derivative −β σ(−βΔ)',step>=4?number(model.derivative):null,{warm:true,arrived:step===4});
+  const motions={
+    1:{segments:[{points:[[118,143],[150,235]],label:'log(0.4 / 0.2)',start:.03,end:.2},{points:[[150,235],[150,338]],label:number(model.policyOdds),start:.25,end:.42},{points:[[600,143],[467,235]],label:'log(0.2 / 0.2)',start:.5,end:.67},{points:[[467,235],[467,338]],label:0,start:.73,end:.86}]},
+    2:{segments:[{points:[[150,338],[810,235]],label:number(model.policyOdds),start:.04,end:.25},{points:[[467,338],[810,235]],label:`− ${model.referenceOdds}`,start:.34,end:.55},{points:[[810,235],[810,338]],label:number(model.margin),start:.65,end:.86}]},
+    3:{segments:[{points:[[810,338],[240,440]],label:`βΔ = ${number(model.scaled)}`,start:.06,end:.4},{points:[[240,440],[240,548]],label:number(model.loss),start:.52,end:.86}]},
+    4:{segments:[{points:[[810,338],[725,440]],label:`−β σ(−βΔ)`,start:.06,end:.4},{points:[[725,440],[725,548]],label:number(model.derivative),start:.52,end:.86}]},
+  };
+  return frame('preference',630,body,motions[step]||null);
+}
+
+const renderers = {'service-map': (step)=>overviewFrame('service-map',step), 'recipe-map':(step)=>overviewFrame('recipe-map',step), fleet:fleetFrame, corpus:corpusFrame, optimizer:optimizerFrame, preference:preferenceFrame, speculation: speculationFrame, filtering: filteringFrame, gradient: gradientFrame, chunk: chunkFrame, transfer: transferFrame, request: requestFrame, residency: residencyFrame, queue: queueFrame, routing: routingFrame, cluster: clusterFrame, training: trainingFrame, mask: maskFrame, policy: policyFrame, advantage: advantageFrame, mixer: mixerFrame};
 
 export function sceneFrame(kind, step = 0, options = {}) {
   return renderers[kind](step, options);

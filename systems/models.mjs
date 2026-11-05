@@ -166,7 +166,76 @@ export function reductionExample() {
   };
 }
 
+export function fleetRamp(startup = 60) {
+  const arrivals = 50;
+  const initial = 35;
+  const ready = 70;
+  const deficit = Math.max(0, arrivals - initial);
+  const backlog = deficit * startup;
+  const surplus = ready - arrivals;
+  const drain = backlog / surplus;
+  return {arrivals, initial, ready, startup, deficit, backlog, surplus, drain, clear: startup + drain};
+}
+
+export function corpusExposure(codeShare = 50) {
+  const budget = 40;
+  const rows = [{name:'Code', unique:10, share:codeShare/100}, {name:'Web', unique:90, share:1-codeShare/100}];
+  return {budget, rows:rows.map(row => ({...row, drawn:budget*row.share, exposure:budget*row.share/row.unique}))};
+}
+
+export function optimizerGeometry() {
+  const gradient = [[4,3],[3,4]];
+  const squares = gradient.map(row => row.map(value => value*value));
+  const adam = gradient.map((row,i) => row.map((value,j) => value / Math.sqrt(squares[i][j])));
+  const polar = [[1,0],[0,1]];
+  return {gradient, squares, adam, polar, singularValues:[7,1]};
+}
+
+export function preferencePair(chosen = 0.4, rejected = 0.2, beta = 0.5) {
+  const refChosen = 0.2;
+  const refRejected = 0.2;
+  const policyOdds = Math.log(chosen/rejected);
+  const referenceOdds = Math.log(refChosen/refRejected);
+  const margin = policyOdds-referenceOdds;
+  const scaled = beta*margin;
+  const loss = Math.log1p(Math.exp(-scaled));
+  const derivative = -beta/(1+Math.exp(scaled));
+  return {chosen,rejected,refChosen,refRejected,beta,policyOdds,referenceOdds,margin,scaled,loss,derivative};
+}
+
 export const STUDIES = {
+  'service-map': {
+    title:'An industrial inference service',
+    note:'Schematic service path. Solid arrows carry requests or results. The lower control path prepares deployment capacity. Nodes link to the corresponding argument; they do not specify a vendor’s private topology.',
+    steps:['Start with the application’s completion requirement','Check the account and admit work','Choose a compatible version and destination','Execute prompt processing and generation','Deliver a stream or a durable batch result','Measure the completed task and resources','Provision, upgrade and drain replicas','Prepare the model, precision and engine configuration'],
+  },
+  'recipe-map': {
+    title:'A model through training and release',
+    note:'Schematic reading order. Real recipes can repeat or combine stages. Optimizer state, data, numerical formats and held-out evaluations accompany the transitions. Each node links to its explanation.',
+    steps:['Construct the retained corpus and mixture','Allocate and execute pretraining','Change context, data or optimization during mid-training','Learn demonstrated assistant actions','Learn from graded or preferred attempts','Transfer capabilities through a teacher','Select and validate a checkpoint','Publish a versioned serving artifact'],
+  },
+  fleet: {
+    title:'The backlog formed before a replica is ready',
+    note:'Authored constant-rate fluid model. Arrivals are 50 requests/s, existing ready capacity is 35/s, and total capacity after startup is 70/s. All work is queued and requests have equal cost in this illustration.',
+    parameter:{label:'Replica startup time',unit:'s',min:0,max:120,step:15,value:60},
+    steps:['Inspect arrivals and ready capacity','Count work accumulating each second','Accumulate the startup backlog','Count capacity left after new arrivals','Drain the backlog','Include startup and drain time'],
+  },
+  corpus: {
+    title:'Sampling weights become token exposures',
+    note:'Authored corpus with 10B code and 90B web tokens and a 40B training-token budget. Sampling cycles through shuffled sources. Exposure counts visits, not demonstrated learning quality.',
+    parameter:{label:'Code fraction of sampled tokens',unit:'%',min:10,max:90,step:10,value:50},
+    steps:['Inspect unique source sizes and the budget','Allocate sampled code tokens','Allocate sampled web tokens','Count average visits to each code token','Count average visits to each web token'],
+  },
+  optimizer: {
+    title:'Coordinate normalization and matrix directions',
+    note:'Authored symmetric positive-definite gradient. Adam’s first step has zero initial moments and negligible epsilon. The Muon reference uses this gradient as its momentum and exact polar normalization. Production momentum, scaling, decay and iterative approximation are omitted here.',
+    steps:['Inspect the gradient matrix','Form the corrected second moment at the first Adam step','Normalize Adam coordinate 0,0','Normalize Adam coordinate 0,1','Normalize Adam coordinate 1,0','Normalize Adam coordinate 1,1','Inspect the gradient’s singular values','Replace the singular values with one in the polar reference'],
+  },
+  preference: {
+    title:'One preference pair relative to a reference policy',
+    note:'Authored three-reply distributions. Policy pair probabilities are (0.4,0.2), reference pair probabilities (0.2,0.2), with remaining mass elsewhere. Beta is 0.5. This isolates one basic DPO term, not a full training recipe.',
+    steps:['Inspect both response probabilities and the reference','Form policy and reference log odds','Subtract to obtain the relative margin','Apply the sigmoid pair loss','Differentiate the pair loss with respect to the margin'],
+  },
   chunk: {
     title: 'Choose a chunk from the whole step’s work',
     note: 'Authored timing model in milliseconds. One full-attention layer’s pair count is a proxy with fixed fitted coefficients, not a GPU measurement. Four decode rows of context 1024 share the 20 ms budget. The search is capped at 2048 new prefill tokens.',
@@ -253,6 +322,8 @@ export const STUDIES = {
 };
 
 export function studyDuration(kind, step = 0) {
+  if (kind === 'optimizer' && step === 1) return 28000;
+  if (['fleet','corpus','optimizer','preference'].includes(kind)) return 18000;
   if (kind === 'gradient') return 24000;
   if (kind === 'chunk' && [1, 3].includes(step)) return 24000;
   if (kind === 'transfer' && step === 1) return 28000;
