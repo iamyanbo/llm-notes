@@ -1,5 +1,6 @@
 import {productionTrainingSections} from './production.mjs';
 import {trainingDepth} from './depth.mjs';
+import {midtrainingCase, reportRecipeCase, asyncCase} from './cases.mjs';
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
 const mimo = 'https://arxiv.org/html/2610.11959v1';
@@ -31,6 +32,7 @@ const coreTraining = {
         p('MiMo first trains a language backbone and then integrates vision and audio. Its agent-centric mid-training combines trajectories with text and multimodal material while extending context. The optimizer and precision transitions discussed above occur within this larger change of regime.') +
         source('MiMo pretraining and mid-training stages', mimo) +
         p('A model that rarely emits a valid test invocation offers an agent verifier little useful variation. Demonstrations and trajectory data can make that behavior available before expensive reinforcement learning begins. Similarly, a long-context RL environment needs a checkpoint that can use its history before it can learn a good long-horizon strategy.') +
+        midtrainingCase +
         '<h3 id="context-extension">Context extension changes work, data and execution</h3>' +
         p('Increasing a maximum-length setting does not show that a model can retrieve distant evidence or reason across it. The positional construction must support the new range, the training data must exercise useful long-distance dependencies, and evaluation must test more than a single memorized retrieval pattern.') +
         p('Full attention also reads more pairs. If sequence length doubles, the triangular comparison count approaches four times its earlier value, while a fixed token budget contains fewer sequences. Local, sparse or recurrent architectures change that account. The parallel layout and batch schedule therefore need to follow the architecture actually being extended.') +
@@ -96,6 +98,7 @@ const coreTraining = {
         p('Move the learner probability to 0.6 in the figure. The ratio becomes six, outside the initial positive interval, and the mask becomes zero. The term supplies no gradient under that mask. The example exposes the rule’s boundary while keeping the sampled action and its recorded probability fixed.') +
         p('Writing '+math(String.raw`\operatorname{sg}`)+' for “use this value without differentiating through it,” the term we have examined is') +
         equation(String.raw`J_{\mathrm{token}}=\operatorname{sg}(M r A)\log p,\qquad \frac{\partial J_{\mathrm{token}}}{\partial\log p}=M r A.`) +
+        reportRecipeCase +
         trainingDepth['rewarded-attempts'] +
         p('A full training step aggregates many such terms and may modify the episode advantages. This example isolates one positive-advantage coefficient at the reported initial bounds. It does not reproduce all grading, masking, entropy control, or aggregation choices in the run. To evaluate the complete update, those choices must be specified together.'),
     },
@@ -140,9 +143,7 @@ const coreTraining = {
           ['Continuation after refresh', 'Version 11', 'Exact new tokens and probabilities from version 11'],
           ['Learner evaluation', 'Version 12', 'Current probabilities paired with each recorded segment'],
         ], 'Illustrative policy versions within one partial episode') +
-        p('Revised weights also change attention state. A continuation needs KV state compatible with the policy now evaluating its prefix. MiMo describes re-prefill after policy updates in its partial-rollout design. Generation, state reconstruction, and learning therefore compete for the same overall training budget.') +
-        p('MiMo also freezes its MoE router during RL after observing unstable expert loads. This addresses a parameter-drift problem alongside the need to align training and inference calculations.') +
-        source('MiMo partial rollouts and router stability', mimo) +
+        asyncCase +
         p('Precision and kernels can affect that alignment. The rollout engine and learner may perform different reductions or use different formats. A small numerical change can alter an MoE choice or the set of tokens considered by sampling. Probability comparisons need the corresponding implementation details, as well as a checkpoint name.') +
         p('Rufus-Air describes replaying sampled expert choices in the training forward pass. That intervention preserves a recorded route for the calculation being compared. Freezing router parameters and replaying a route answer different operational questions.') +
         source('Rufus-Air routing replay', rufus) +
@@ -193,5 +194,9 @@ export const training={...coreTraining,sections:trainingOrder.map(id=>trainingCh
   ['Nemotron 3 Super staged RL recipe','https://docs.nvidia.com/nemotron/0.2.0/nemotron/super3/rl/index.html'],
   ['Megatron Bridge parallelisms','https://docs.nvidia.com/nemo/megatron-bridge/latest/parallelisms.html'],
   ['Muown optimizer research','https://arxiv.org/html/2605.10797'],
+  ['Nemotron 3 Super technical report','https://arxiv.org/html/2604.12374'],
+  ['Priming Base Models for Agentic Post-Training, version 1','https://arxiv.org/html/2610.22019v1'],
+  ['Transformer Engine NVFP4 numerical path','https://docs.nvidia.com/deeplearning/transformer-engine/features/low_precision_training/nvfp4/nvfp4.html'],
+  ['Megatron distributed optimizer','https://docs.nvidia.com/megatron-core/developer-guide/latest/user-guide/features/dist_optimizer.html'],
   ['Direct Preference Optimization objective','https://arxiv.org/abs/2305.18290'],
 ]};

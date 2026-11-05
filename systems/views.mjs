@@ -1,4 +1,4 @@
-import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, chunkBudget, kvTransfer, specAllocation, outputUpdate, groupFilter, fleetRamp, corpusExposure, optimizerGeometry, preferencePair} from './models.mjs';
+import {STUDIES, routingBudget, sessionMemory, prefixQueue, maskedTargets, policyWeight, groupAdvantages, mixtureSchedule, chunkBudget, kvTransfer, specAllocation, outputUpdate, groupFilter, fleetRamp, corpusExposure, optimizerGeometry, preferencePair, deepinferRecovery, mtpScreen, muownStep} from './models.mjs';
 
 const escape = value => String(value).replace(/[&<>"']/g, character => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[character]));
 const number = value => Number.isInteger(value) ? String(value) : value.toFixed(4);
@@ -568,6 +568,84 @@ function preferenceFrame(step) {
 }
 
 const renderers = {'service-map': (step)=>overviewFrame('service-map',step), 'recipe-map':(step)=>overviewFrame('recipe-map',step), fleet:fleetFrame, corpus:corpusFrame, optimizer:optimizerFrame, preference:preferenceFrame, speculation: speculationFrame, filtering: filteringFrame, gradient: gradientFrame, chunk: chunkFrame, transfer: transferFrame, request: requestFrame, residency: residencyFrame, queue: queueFrame, routing: routingFrame, cluster: clusterFrame, training: trainingFrame, mask: maskFrame, policy: policyFrame, advantage: advantageFrame, mixer: mixerFrame};
+
+function deepinferFrame(step,options) {
+  const v=deepinferRecovery(131072,options.value !== 0),fmt=value=>value.toLocaleString('en-US');
+  let body=text(28,32,'One returning 131,072-token prefix. All numerical lengths below are tokens.','scene-note');
+  body+=cell(28,110,245,'Request prefix L',fmt(v.length));
+  body+=cell(345,110,245,'Leave 128 + 6 tokens',step>=1?fmt(v.cap):null,{warm:true,arrived:step===1});
+  body+=cell(690,110,240,'Full 128-token blocks',step>=2?fmt(v.blockHit):null,{warm:true,arrived:step===2});
+  body+=block(28,340,245,'Global block cache','3FS → host → GPU',false);
+  body+=block(345,340,245,'Host-memory SWA state',v.hasSwa?'available locally / remotely':'compatible state absent',step===3);
+  body+=cell(690,340,240,'Reusable prefix',step>=3?fmt(v.reusable):null,{warm:true,arrived:step===3});
+  if(step>=2)body+=text(28,275,'Compatible SWA endpoint interval: ['+fmt(v.swaInterval[0])+', '+fmt(v.swaInterval[1])+'].','row-label');
+  body+=cell(345,550,425,'Suffix to process = L − reusable prefix',step>=4?fmt(v.replay)+' tokens':null,{warm:true,arrived:step===4});
+  const motions={
+    1:{segments:[{points:[[150,148],[467,250]],label:'131072 − 134',start:.06,end:.4},{points:[[467,250],[467,148]],label:fmt(v.cap),start:.52,end:.86}]},
+    2:{segments:[{points:[[467,148],[810,250]],label:'floor(130938 / 128) × 128',start:.06,end:.4},{points:[[810,250],[810,148]],label:fmt(v.blockHit),start:.52,end:.86}]},
+    3:{segments:[{points:[[810,148],[810,295]],label:fmt(v.blockHit),start:.04,end:.25},{points:[[467,382],[810,295]],label:v.hasSwa?'keep prefix':'back off 128',start:.34,end:.55},{points:[[810,295],[810,378]],label:fmt(v.reusable),start:.65,end:.86}]},
+    4:{segments:[{points:[[150,148],[150,500],[557,500]],label:fmt(v.length),start:.04,end:.25},{points:[[810,378],[810,500],[557,500]],label:'− '+fmt(v.reusable),start:.34,end:.55},{points:[[557,500],[557,588]],label:fmt(v.replay),start:.65,end:.86}]},
+  };
+  return frame('deepinfer-recovery',670,body,motions[step]||null);
+}
+
+function mtpCaseFrame(step,options) {
+  const v=mtpScreen(options.value);
+  let body=text(28,32,'Median screens: first token ≤ '+v.ttftLimit+' ms; token interval ≤ '+v.itlLimit+' ms.','scene-note');
+  for(const [i,row] of v.rows.entries()){
+    const y=130+i*220;
+    body+=text(28,y-60,row.name,'section-label');
+    body+=cell(28,y,245,'Measured first-token p50',row.ttft+' ms');
+    body+=cell(345,y,245,'Measured token-interval p50',row.itl+' ms');
+    body+=cell(690,y,240,'Measured output tokens/s',step>=4?row.throughput:null,{warm:true,arrived:step===4});
+    if(step>=1)body+='<g '+(step===1?'data-arrival=""':'')+'>'+text(28,y+115,row.first?'First-token screen passes':'First-token screen fails','row-label')+'</g>';
+    if(step>=2)body+='<g '+(step===2?'data-arrival=""':'')+'>'+text(345,y+115,row.stream?'Stream screen passes':'Stream screen fails','row-label')+'</g>';
+    if(step>=3)body+='<g '+(step===3?'data-arrival=""':'')+'>'+text(690,y+115,row.passes?'Both medians pass':'Screened out','result-note')+'</g>';
+  }
+  if(step>=4)body+=text(28,605,'Separate passing medians do not establish how many requests meet both targets.','scene-note');
+  let motion=null;
+  if(step>=1&&step<=4)motion={segments:v.rows.map((row,i)=>{
+    const y=168+i*220;
+    return {points:step===1?[[150,y],[150,y+70]]:step===2?[[467,y],[467,y+70]]:step===3?[[150,y+70],[810,y+70]]:[[810,y+70],[810,y]],
+      label:step===1?row.ttft+' ≤ '+v.ttftLimit+'?':step===2?row.itl+' ≤ 20?':step===3?(row.passes?'pass both':'screened out'):row.throughput+' tok/s',start:.06+i*.43,end:.4+i*.43};
+  })};
+  return frame('mtp-case',650,body,motion);
+}
+
+function muownFrame(step) {
+  const v=muownStep(),all=[0,1,2,3];
+  let body=text(28,32,'One 2×2 weight matrix. Update direction and magnitude, then rebuild the effective weight.','scene-note');
+  body+=matrixScene(28,110,'Effective weight A',v.weight,all,[]);
+  body+=matrixScene(345,110,'Gradient G = ∂L/∂A',v.gradient,all,[]);
+  body+=matrixScene(690,110,'Unit rows D = R / r',v.unit,step>=1?all:[],step===1?all:[]);
+  body+=text(28,265,'Initially R = A; row magnitudes s = (5, 2); cached norms r = (5, 2).','scene-note');
+  if(step>=2)body+='<g '+(step===2?'data-arrival=""':'')+'>'+text(28,300,'Magnitude gradient α = Gᵢ · Dᵢ = ('+v.radial.map(number).join(', ')+')','row-label')+'</g>';
+  body+=matrixScene(28,375,'Direction gradient K',v.tangent,step>=3?all:[],step===3?all:[]);
+  body+=matrixScene(345,375,'Polar Q of H = 1.95K',v.polar,step>=4?all:[],step===4?all:[]);
+  body+=matrixScene(690,375,'Direction after step R′',v.nextDirection,step>=5?all:[],step===5?all:[]);
+  if(step>=4)body+=text(28,525,'Q has orthonormal columns. Subtract (0.2√2 × 0.1)Q from R.','scene-note');
+  body+=cell(28,620,245,'Magnitudes after Adam s′',step>=6?'('+v.nextScales.map(number).join(', ')+')':null,{warm:true,arrived:step===6});
+  const visible=all.filter(i=>step>=7+i),arriving=all.filter(i=>step===7+i);
+  body+=matrixScene(345,620,'Rebuilt A′ = diag(s′/r′)R′',v.nextWeight,visible,arriving);
+  body+=cell(690,620,240,'Cached direction norms r′',step>=5?'('+v.nextNorms.map(x=>x.toFixed(3)).join(', ')+')':null,{warm:true,arrived:step===5});
+  if(step===11)body+='<g data-arrival="">'+text(28,790,'Next step recovers diag(r′/s′)A′ = R′. Keep both row-state vectors.','result-note')+'</g>';
+  let motion=null;
+  if(step===1)motion={segments:all.map(index=>{const i=Math.floor(index/2),j=index%2;return {points:[[82+j*115,133+i*52],[744+j*115,133+i*52]],label:v.weight[i][j]+' / '+v.norms[i],start:.02+index*.21,end:.2+index*.21};})};
+  if(step===2)motion={segments:[{points:[[399,133],[180,295]],label:'1×0.6 + 0×0.8 = 0.6',start:.05,end:.4},{points:[[399,185],[520,295]],label:'1×0 + 1×1 = 1',start:.5,end:.86}]};
+  if(step===3)motion={segments:all.map(index=>{const i=Math.floor(index/2),j=index%2;return {points:[[399+j*115,133+i*52],[82+j*115,398+i*52]],label:v.gradient[i][j]+' − '+v.radial[i]+'×'+v.unit[i][j],start:.02+index*.21,end:.2+index*.21};})};
+  if(step===4)motion={points:[[140,425],[340,425],[457,425]],label:'M = K; H = .95M + K'};
+  if(step===5)motion={segments:[{points:[[457,425],[600,540]],label:'−0.028284 Q',start:.06,end:.4},{points:[[600,540],[802,425]],label:'R′ = R − 0.028284 Q',start:.52,end:.86}]};
+  if(step===6)motion={segments:[{points:[[180,295],[150,545]],label:'Adam(.6, 1) = (1, 1)',start:.06,end:.4},{points:[[150,545],[150,658]],label:'(5, 2) − .1(1, 1)',start:.52,end:.86}]};
+  if(step>=7&&step<=10){const index=step-7,i=Math.floor(index/2),j=index%2;motion={segments:[
+    {points:[[744+j*115,398+i*52],[590,555]],label:v.nextDirection[i][j].toFixed(4),start:.04,end:.25},
+    {points:[[150,658],[300,555],[590,555]],label:'× '+v.nextScales[i]+' / '+v.nextNorms[i].toFixed(4),start:.34,end:.55},
+    {points:[[590,555],[399+j*115,643+i*52]],label:v.nextWeight[i][j].toFixed(4),start:.65,end:.86},
+  ]};}
+  if(step===11)motion={points:[[457,670],[802,670],[802,425]],label:'multiply rows by r′ / s′'};
+  return frame('muown-step',835,body,motion);
+}
+
+Object.assign(renderers,{'deepinfer-recovery':deepinferFrame,'mtp-case':mtpCaseFrame,'muown-step':muownFrame});
 
 export function sceneFrame(kind, step = 0, options = {}) {
   return renderers[kind](step, options);

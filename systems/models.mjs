@@ -203,7 +203,74 @@ export function preferencePair(chosen = 0.4, rejected = 0.2, beta = 0.5) {
   return {chosen,rejected,refChosen,refRejected,beta,policyOdds,referenceOdds,margin,scaled,loss,derivative};
 }
 
+export function deepinferRecovery(length = 131072, hasSwa = true) {
+  if (!Number.isInteger(length) || length < 256) throw new RangeError('This prefix example needs at least 256 tokens.');
+  const cap = length - 134;
+  const blockHit = Math.floor(cap / 128) * 128;
+  const reusable = hasSwa ? blockHit : Math.max(0, blockHit - 128);
+  return {length, cap, blockHit, hasSwa, reusable, replay: length - reusable, swaInterval:[blockHit - 128, blockHit]};
+}
+
+export function mtpScreen(ttftLimit = 1500, itlLimit = 20) {
+  const rows = [
+    {name:'Offloading', ttft:1300, itl:30.7, throughput:2178},
+    {name:'Offloading + MTP', ttft:1600, itl:14.7, throughput:3788},
+  ].map(row => ({...row, first:row.ttft <= ttftLimit, stream:row.itl <= itlLimit,
+    passes:row.ttft <= ttftLimit && row.itl <= itlLimit}));
+  return {ttftLimit, itlLimit, rows, throughputRatio:3788/2178};
+}
+
+export function muownEffective(scales, directions) {
+  return directions.map((row,i) => {
+    const norm = Math.hypot(...row);
+    if (!norm) throw new RangeError('Muown direction rows must have nonzero length.');
+    return row.map(value => scales[i] * value / norm);
+  });
+}
+
+export function muownStep() {
+  const weight = [[3,4],[0,2]], gradient = [[1,0],[1,1]];
+  const scales = [5,2], norms = [5,2], eta = 0.1;
+  const direction = weight.map((row,i) => row.map(value => norms[i]/scales[i]*value));
+  const unit = direction.map((row,i) => row.map(value => value/norms[i]));
+  const radial = gradient.map((row,i) => row.reduce((sum,value,j) => sum + value*unit[i][j],0));
+  const tangent = gradient.map((row,i) => row.map((value,j) => scales[i]/norms[i]*(value-radial[i]*unit[i][j])));
+  const momentum = tangent.map(row => [...row]); // initial matrix momentum is zero
+  const nesterov = tangent.map((row,i) => row.map((value,j) => 0.95*momentum[i][j]+value));
+  const [[a,b],[c,d]] = nesterov;
+  const denominator = Math.hypot(a+d,c-b); // exact positive-determinant 2x2 polar reference
+  const polar = [[(a+d)/denominator,(b-c)/denominator],[(c-b)/denominator,(a+d)/denominator]];
+  const directionRate = 0.2*Math.sqrt(2)*eta;
+  const nextDirection = direction.map((row,i) => row.map((value,j) => value-directionRate*polar[i][j]));
+  const magnitudeMoment = radial.map(value => 0.1*value);
+  const magnitudeVariance = radial.map(value => 0.05*value*value);
+  // First Adam step: zero initial moments, beta=(.9,.95), and epsilon=0 in this example.
+  const nextScales = scales.map((value,i) => value-eta*(magnitudeMoment[i]/0.1)/Math.sqrt(magnitudeVariance[i]/0.05));
+  const nextNorms = nextDirection.map(row => Math.hypot(...row));
+  const nextWeight = muownEffective(nextScales,nextDirection);
+  const reconstructed = nextWeight.map((row,i) => row.map(value => nextNorms[i]/nextScales[i]*value));
+  return {weight, gradient, scales, norms, eta, direction, unit, radial, tangent, momentum, nesterov, polar,
+    directionRate, nextDirection, magnitudeMoment, magnitudeVariance, nextScales, nextNorms, nextWeight, reconstructed};
+}
+
 export const STUDIES = {
+  'deepinfer-recovery': {
+    title:'A 128K prefix reaches two recovery boundaries',
+    note:'Calculated example using DeepSeek’s documented production policy at commit a679bb8. L = 131072 tokens with matching global blocks available. Block size 128 and margin 128 + 6 are documented. A compatible SWA state may be local or fetched from another host. Its absence triggers one block of backoff. Counts are not latency measurements.',
+    parameter:{label:'Compatible SWA state available',unit:'(0 absent, 1 present)',min:0,max:1,step:1,value:1},
+    steps:['Start with the returning prefix','Leave the 134-token replay margin','Round the reusable block prefix down to 128','Check available compatible SWA state','Count the suffix to process again'],
+  },
+  'mtp-case': {
+    title:'Faster decode under two median screening targets',
+    note:'Published llm-d GLM-5.2-FP8 comparison, 32 H200 GPUs, 1P1D DEP16, concurrency 64, CPU offloading in both configurations. Fixed-duration stages can complete different requests. Adjustable TTFT and fixed 20 ms ITL targets are authored screens of separate medians, not a joint request SLA.',
+    parameter:{label:'Median first-token target',unit:'ms',min:1000,max:2000,step:100,value:1500},
+    steps:['Read the two published operating points','Screen median time to first token','Screen median time between tokens','Combine the two median screens','Compare output only after the latency screens'],
+  },
+  'muown-step': {
+    title:'One Muown step, including the state needed next time',
+    note:'Authored first step following Muown Algorithm 1. Zero initial moments, η = 0.1, no weight decay, Adam beta=(.9,.95) with epsilon=0, direction momentum .95. An exact 2×2 polar reference replaces iterative orthogonalization. Matrix rows are output coordinates. This is not a reproduction of MiMo training.',
+    steps:['Inspect the weight, gradient and row state','Normalize each direction row','Project the gradient onto each unit row','Remove the radial component','Form Nesterov momentum and its polar direction','Update direction state and cache its row norms','Apply Adam to the two magnitudes','Rebuild weight coordinate 0,0','Rebuild weight coordinate 0,1','Rebuild weight coordinate 1,0','Rebuild weight coordinate 1,1','Recover the direction state for the next update'],
+  },
   'service-map': {
     title:'An industrial inference service',
     note:'Schematic service path. Solid arrows carry requests or results. The lower control path prepares deployment capacity. Nodes link to the corresponding argument; they do not specify a vendor’s private topology.',
@@ -322,6 +389,8 @@ export const STUDIES = {
 };
 
 export function studyDuration(kind, step = 0) {
+  if (kind === 'muown-step') return [3,4].includes(step) ? 32000 : 24000;
+  if (['deepinfer-recovery','mtp-case'].includes(kind)) return 18000;
   if (kind === 'optimizer' && step === 1) return 28000;
   if (['fleet','corpus','optimizer','preference'].includes(kind)) return 18000;
   if (kind === 'gradient') return 24000;

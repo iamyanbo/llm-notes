@@ -1,5 +1,6 @@
 import {p, math as m, equation as eq, heading as h, table, source, study} from '../systems/markup.mjs';
 import {corpusExposure, preferencePair} from '../systems/models.mjs';
+import {syntheticCodeCase, distributedCase, muownCase, precisionCase, learnedRewardCase} from './cases.mjs';
 
 const nemo='https://docs.nvidia.com/nemotron/0.2.0/nemotron/super3/pretrain.html';
 const nemoRL='https://docs.nvidia.com/nemotron/0.2.0/nemotron/super3/rl/index.html';
@@ -29,7 +30,7 @@ export const productionTrainingSections=[
       h('packing-and-history','Filling a sequence must preserve the intended prediction problem')+
       p('Tokenization determines the length used for these counts. Packing several short documents into one sequence reduces padding, but the boundary between documents requires a choice. The later document can be allowed to read the earlier one, or an attention mask can isolate them. A separator token marks a boundary without itself preventing attention across it.')+
       p('The loss mask is a separate choice about targets. A position can be permitted as context while excluded as a direct prediction target. Keep document boundaries, position conventions and target masks aligned after packing. The supervised section will use the same distinction for tool observations.')+
-      p('Synthetic material adds a generation policy to the corpus specification. Teacher model, prompt, sampling, verification and filtering determine which examples survive. Ten million accepted examples from a narrow template can provide less coverage than their count suggests. Retain source families and held-out tasks so that additional synthetic volume can be evaluated against diversity and generalization rather than counted as an automatic gain.'),
+      syntheticCodeCase,
   },
   {
     id:'pretraining-budget', title:'Choosing a model, token budget and training clock',
@@ -66,6 +67,7 @@ export const productionTrainingSections=[
         ['Context parallel','Sequence positions','Attention state or partial results crossing ranks'],
       ],'Parallel dimensions divide different objects and can be combined')+
       source('Megatron Bridge parallelism guide',parallel)+
+      distributedCase+
       h('pipeline-occupancy','A larger global batch does not instantly fill every stage')+
       p('In a simple pipeline with four equal-time stages and eight microbatches, filling and draining takes time in addition to the steady flow. An idealized single-direction schedule occupies eight useful slots out of eleven elapsed slots on average, an efficiency of '+m('8/(8+4-1)\\approx0.727')+'. Actual training schedules interleave forward and backward work and may recompute activations, so their bubble calculation must use their actual timeline.')+
       p('Adding microbatches can reduce a fill/drain fraction but also changes activation liveness and sometimes the optimizer batch. If we split the same batch more finely, each operation may become less efficient. If we enlarge the batch, the optimization regime changes. A throughput tuning result needs to say which of these experiments was performed.')+
@@ -96,11 +98,11 @@ export const productionTrainingSections=[
       h('row-magnitude','Controlling update singular values does not fix weight magnitudes')+
       p('The direction of an update and the size of the accumulated weight are different objects. Repeated updates can change weight norms even when the update has a controlled spectrum. Muown’s research diagnosis identifies row-magnitude growth as an empirical contributor to weight spectral-norm drift in its experiments.')+
       source('Muown’s diagnosis and reparameterization',muown)+
-      p('To separate the objects, take weight rows '+m('(3,4)')+' and '+m('(0,2)')+'. Their lengths are five and two. We can write the same matrix as row scales '+m('(5,2)')+' multiplying unit rows '+m('(0.6,0.8)')+' and '+m('(0,1)')+'. A method can now update row magnitudes and row directions through separate variables. These numbers illustrate the representation, not the full Muown algorithm.')+
+      muownCase+
       h('switching-and-partitioning','A temporal switch and a parameter partition need separate records')+
       p('MiMo pretrains with AdamW, switches hidden matrices to Muown during mid-training, and keeps AdamW for embeddings, the output head and router. It reports carrying FP32 master weights and Muown row state from SFT into RL. This is both a stage transition and simultaneous use of different optimizers on different parameter groups.')+
       source('MiMo’s optimizer transition and retained state',mimo)+
-      p('An Adam second-moment tensor is not automatically a valid matrix-momentum or row-scale state. At the transition, specify which state is transferred, initialized or reset and how the new step scale is chosen. A matched comparison should hold data order and token budget fixed while measuring loss, downstream results, norm behavior and achieved updates per second.')+
+      p('The reported SFT-to-RL state retention does not specify an AdamW-to-Muown conversion at the earlier transition. An Adam second-moment tensor cannot simply stand in for matrix momentum or a row magnitude. That earlier boundary still needs its initialization rule. A matched optimizer comparison should hold data order and token budget fixed while measuring loss, downstream results, norm behavior and achieved updates per second.')+
       p('A method with fewer steps to a target loss can still take longer if each step is expensive. A larger-batch efficiency claim also belongs to its tested regime. These comparisons need both the optimization curve and its physical cost. We next examine another change that touches both sides, low-precision training.'),
   },
   {
@@ -114,16 +116,13 @@ export const productionTrainingSections=[
         [0,'1.000','1.00'],[1,'0.997','1.00'],[2,'0.994','0.99'],[3,'0.991','0.99'],[10,'0.970','0.97'],
       ],'A chosen uniform-grid example of why the master parameter is separate')+
       p('Stochastic rounding supplies another possible tool. Between 0.99 and 1.00, rounding 0.997 upward with probability 0.7 and downward with probability 0.3 preserves its expectation. It introduces randomness rather than preserving each individual value. Its effect on a training run still requires measurement.')+
-      h('scaled-operations','Scales must follow the tensor and the operation that uses it')+
-      p('Low-precision formats represent a bounded set of values. A scale maps an activation or weight block into that range. A large outlier can force a scale that gives ordinary values coarse resolution. Scaling a smaller block can change that error distribution while adding metadata and conversion work.')+
-      p('The numerical path can retain higher-precision accumulations even when multiplication operands are low precision. Gradients, optimizer states and the exported checkpoint can also use different formats. These are choices about different objects. An advertised four-bit training method does not mean that every stored tensor and every arithmetic operation uses four bits.')+
-      p('Loss scaling addresses gradients that would otherwise underflow in a limited-range representation. Multiplying the loss scales the gradients during backward; the optimizer must remove that scale before applying its intended update and clipping rule. Overflow detection can skip a corrupted step and adjust the scale. These actions affect the optimizer and token clocks, so a restart record must preserve them where used.')+
+      precisionCase+
       h('quantization-aware-learning','The model can be trained to tolerate the forward approximation')+
       p('Rounding is piecewise constant, so its ordinary derivative is zero almost everywhere. Quantization-aware training often uses a surrogate gradient through a simulated or actual quantized forward path. That surrogate is an algorithmic choice. It is not the mathematical derivative of the rounding function.')+
       p('Nemotron 3 Super’s recipe describes native NVFP4 pretraining, while MiMo introduces MXFP4 quantization-aware training during mid-training. Their timelines differ. The relevant comparison includes when the approximation was introduced and which state was retained across that boundary.')+
       source('Nemotron low-precision pretraining recipe',nemo)+
       source('MiMo’s mid-training numerical transition',mimo)+
-      p('Track more than final loss when validating this change. Saturation counts, tensor norms, skipped steps, attention-logit scale, expert loads and downstream behavior can locate a failure earlier. A divergence immediately after conversion suggests a different investigation from gradual norm growth or a regression confined to long contexts. Keep a higher-precision comparison at matched tokens where resources permit.'),
+      p('The gradient scale belongs to this record too. In a path using loss scaling, multiplying the loss multiplies its gradients. Unscale before the intended clipping and optimizer calculation. An overflow that skips a step changes the update clock even if the data reader advanced. A restart needs the scale and skip history where the implementation uses them, alongside the master parameters and optimizer state.'),
   },
   {
     id:'posttraining-objectives', title:'Demonstrations, preferences and rewards',
@@ -150,8 +149,8 @@ export const productionTrainingSections=[
       h('reward-and-reference','The old sampling policy and the reference policy have different jobs')+
       p('On-policy RL generates attempts from a current or recent policy and grades what it actually does. The old rollout probabilities describe that collection distribution. A reference policy, when used for regularization, supplies a separate behavioral anchor. Updating the rollout policy does not require updating that reference on the same schedule.')+
       p('A common regularizer subtracts '+m('\\beta_{KL}D_{KL}(\\pi_\\theta\\|\\pi_{\\mathrm{ref}})')+' from expected reward. The KL term penalizes distributional movement relative to the reference under the states used by that objective. It does not establish that the reference is correct or prevent every form of reward hacking.')+
-      p('Rufus-Air uses on-policy RL against a learned reward model in its final preference-oriented stage rather than training directly on a fixed DPO pair set. Nemotron’s released staged recipe distinguishes verifier-driven phases from a final learned-reward phase and changes their KL settings. These choices show why “post-training” cannot be represented by one universal loss.')+
-      source('Rufus-Air’s learned-reward stage',rufus)+
+      learnedRewardCase+
+      p('Nemotron’s released staged recipe likewise distinguishes verifier-driven phases from a final learned-reward phase and changes their KL settings. The choice of feedback and regularization belongs to each stage, rather than to one universal post-training loss.')+
       source('Nemotron’s staged RL configuration',nemoRL)+
       p('We can now return to a verifier-based group calculation with its scope understood. Later, we will compare its collection and exploration choices with the other sources of feedback.'),
   },
@@ -167,7 +166,7 @@ export const productionTrainingSections=[
       p('Increasing the budget also changes cost. If an episode doubles its generated action tokens, it can occupy rollout capacity longer and contribute more selected tokens to the batch. The prompt-normalization calculation earlier tells us which parts of that length increase change the gradient weight. The collection chapter will account for its occupancy.')+
       h('curriculum-order','A later stage can improve its target and damage an earlier capability')+
       p('A staged curriculum can first establish valid actions, then increase reasoning difficulty, then train a complex agent, then refine open-ended behavior. It can also overwrite useful behavior because all these stages update shared parameters. Keep a fixed suite evaluated at each boundary rather than inspecting only the last checkpoint.')+
-      p('Nemotron’s released recipe runs multi-environment verifier RL, then separate software-engineering phases, then a final learned-reward phase. The stages have different prompt counts, generations per prompt and sequence limits. Rufus-Air also uses a staged recipe and reports regressions from unsuitable prompt sources in learned-reward training. Those are actual choices and failures to compare with MiMo’s mixed-task design.')+
+      p('Nemotron’s released recipe runs multi-environment verifier RL, then separate software-engineering phases, then a final learned-reward phase. The stages have different prompt counts, generations per prompt and sequence limits. Rufus-Air’s <a href="#reward-model-domain">prompt-source failures</a> give a reason to inspect capability changes at each such boundary.')+
       source('Nemotron’s phase order and execution settings',nemoRL)+
       source('Rufus-Air stage ordering and reward-model ablations',rufus)+
       p('For one authored sequence, imagine math accuracy rises from 70 to 76 after a reasoning stage, then falls to 71 after agent training while coding rises. A final average can hide that trade if the evaluation weights happen to compensate. Per-domain trajectories expose it and let us test replay data, mixture changes or a different stage boundary.')+

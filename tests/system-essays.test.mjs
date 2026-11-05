@@ -7,6 +7,7 @@ import {serving} from '../serving/content.mjs';
 import {training} from '../training/content.mjs';
 import {sceneFrame, studyFigure} from '../systems/views.mjs';
 import {createStudy, initializeStudies} from '../systems/app.mjs';
+import {deepinferRecovery, mtpScreen, muownStep, muownEffective} from '../systems/models.mjs';
 
 const require = createRequire(new URL('../foundations/package.json', import.meta.url));
 const {parseHTML} = require('linkedom');
@@ -32,6 +33,99 @@ function harness(kind, reduced = false) {
   };
   return {document, window, figure, controller, click, frames, callbacks};
 }
+
+test('Muown chain-rule gradients agree with finite differences of the effective weight', () => {
+  const v=muownStep(),epsilon=1e-6;
+  const objective=(scales,directions)=>muownEffective(scales,directions)
+    .reduce((sum,row,i)=>sum+row.reduce((part,value,j)=>part+value*v.gradient[i][j],0),0);
+  for(let i=0;i<2;i++){
+    const plus=[...v.scales],minus=[...v.scales];
+    plus[i]+=epsilon;minus[i]-=epsilon;
+    assert.ok(Math.abs((objective(plus,v.direction)-objective(minus,v.direction))/(2*epsilon)-v.radial[i])<1e-8);
+    assert.ok(Math.abs(v.tangent[i].reduce((sum,value,j)=>sum+value*v.unit[i][j],0))<1e-12);
+    for(let j=0;j<2;j++){
+      const high=v.direction.map(row=>[...row]),low=v.direction.map(row=>[...row]);
+      high[i][j]+=epsilon;low[i][j]-=epsilon;
+      assert.ok(Math.abs((objective(v.scales,high)-objective(v.scales,low))/(2*epsilon)-v.tangent[i][j])<1e-8);
+    }
+  }
+});
+
+test('Muown polar descent, updated magnitudes and next-step state are mutually consistent', () => {
+  const v=muownStep();
+  for(let i=0;i<2;i++)for(let j=0;j<2;j++){
+    const qtq=v.polar.reduce((sum,row)=>sum+row[i]*row[j],0);
+    assert.ok(Math.abs(qtq-Number(i===j))<1e-12);
+    assert.ok(Math.abs(v.reconstructed[i][j]-v.nextDirection[i][j])<1e-12);
+  }
+  const qtH=(i,j)=>v.polar.reduce((sum,row,k)=>sum+row[i]*v.nesterov[k][j],0);
+  assert.ok(Math.abs(qtH(0,1)-qtH(1,0))<1e-12);
+  assert.ok(qtH(0,0)>0 && qtH(0,0)*qtH(1,1)-qtH(0,1)*qtH(1,0)>0);
+  v.nextWeight.forEach((row,i)=>assert.ok(Math.abs(Math.hypot(...row)-v.nextScales[i])<1e-12));
+  const dot=weight=>weight.reduce((sum,row,i)=>sum+row.reduce((part,value,j)=>part+value*v.gradient[i][j],0),0);
+  assert.ok(dot(v.nextWeight)<dot(v.weight));
+});
+
+test('the recovery policy leaves its replay margin across block boundaries', () => {
+  for(const length of [256,257,383,384,4096,131071,131072,131073]){
+    const hit=deepinferRecovery(length,true),miss=deepinferRecovery(length,false);
+    assert.equal(hit.blockHit%128,0);
+    assert.ok(hit.blockHit<=length-134 && hit.blockHit+128>length-134);
+    assert.equal(hit.reusable+hit.replay,length);
+    assert.equal(miss.reusable+miss.replay,length);
+    assert.equal(miss.replay-hit.replay,Math.min(128,hit.blockHit));
+  }
+  assert.equal(deepinferRecovery().replay,256);
+  assert.equal(deepinferRecovery(131072,false).replay,384);
+});
+
+test('published medians change the screening decision at the stated boundary', () => {
+  assert.deepEqual(mtpScreen(1500).rows.map(row=>[row.first,row.stream,row.passes]),[[true,false,false],[false,true,false]]);
+  assert.deepEqual(mtpScreen(1600).rows.map(row=>row.passes),[false,true]);
+  assert.deepEqual(mtpScreen(2000,31).rows.map(row=>row.passes),[true,true]);
+  assert.ok(mtpScreen().throughputRatio>1.73 && mtpScreen().throughputRatio<1.74);
+});
+
+test('the reported masked gradient and clipped PPO term differ on the same positive token', () => {
+  const q=.1,p=.15,advantage=.5,epsilon=1e-6,logp=Math.log(p);
+  const ppo=z=>Math.min(Math.exp(z)/q*advantage,Math.max(.8,Math.min(1.2,Math.exp(z)/q))*advantage);
+  const stopped=z=>(p/q*advantage)*z;
+  const difference=f=>(f(logp+epsilon)-f(logp-epsilon))/(2*epsilon);
+  assert.ok(Math.abs(difference(ppo))<1e-12);
+  assert.ok(Math.abs(difference(stopped)-.75)<1e-9);
+});
+
+test('the chosen transform preserves the unquantized dot product and rounding expectation', () => {
+  const H=[[1,1,1,1],[1,-1,1,-1],[1,1,-1,-1],[1,-1,-1,1]].map(row=>row.map(x=>x/2));
+  const a=[8,0,0,0],b=[1,2,3,4];
+  const rotatedA=H[0].map((_,j)=>a.reduce((sum,x,i)=>sum+x*H[i][j],0));
+  const rotatedB=H[0].map((_,j)=>b.reduce((sum,x,i)=>sum+x*H[i][j],0));
+  assert.deepEqual(rotatedA,[4,4,4,4]);
+  assert.equal(rotatedA.reduce((sum,x,i)=>sum+x*rotatedB[i],0),8);
+  assert.ok(Math.abs((.8*1.5+.2*2)*2-3.2)<1e-12);
+});
+
+test('the new case figures preserve manual control, future cells and parameter consistency', () => {
+  for(const kind of ['deepinfer-recovery','mtp-case','muown-step']){
+    const regular=harness(kind);
+    while(regular.controller.state.step<STUDIES[kind].steps.length-1)regular.click('[data-study-next]');
+    assert.equal(regular.controller.state.running,false);
+    assert.doesNotMatch(regular.figure.textContent,/NaN|undefined|Infinity/);
+    const reduced=harness(kind,true);
+    reduced.click('[data-study-play]');
+    assert.equal(reduced.controller.state.step,1);
+    assert.equal(reduced.callbacks.size,0);
+  }
+  assert.doesNotMatch(sceneFrame('muown-step',6).markup,/2\.9208|3\.9344|-0\.0248|1\.8998/);
+  assert.match(sceneFrame('muown-step',7).markup,/2\.9208/);
+  assert.doesNotMatch(sceneFrame('muown-step',7).markup,/3\.9344/);
+  const {figure,window,controller}=harness('deepinfer-recovery');
+  controller.inspect(4);
+  const parameter=figure.querySelector('[data-study-parameter]');
+  parameter.value='0';parameter.dispatchEvent(new window.Event('input'));
+  assert.match(figure.textContent,/384 tokens/);
+  assert.equal(controller.state.running,false);
+});
 
 test('startup debt and later spare capacity account for the same admitted work', () => {
   for(const startup of [0,15,60,120]){

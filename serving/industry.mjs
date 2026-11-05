@@ -1,4 +1,5 @@
 import {p, math as m, equation as eq, heading as h, table, source, study} from '../systems/markup.mjs';
+import {engineCase} from './cases.mjs';
 
 const deepinfra='https://deepinfra.com/blog/deepinfra-nvidia-inference-stack';
 const fireworks='https://docs.fireworks.ai/serverless/reserved-throughput';
@@ -61,6 +62,7 @@ export const industrialSections = [
       p('Consider adding a normalization, matrix product and activation around every layer. Separate kernels write intermediate arrays and require separate launches. A fused implementation may keep intermediates closer to the processor and avoid those boundaries. At a large shape, arithmetic dominates. At a few decode rows, launch and preparation costs can consume a substantial part of the step.')+
       p('A captured execution graph can avoid repeated host preparation for a compatible shape. The scheduler still needs to map a changing batch onto the shapes available. Padding a batch to a larger graph can waste work, while creating too many specialized graphs consumes preparation time and memory. A shape bucket is a deliberate compromise that should appear in the measured cost table.')+
       p('This is also why reducing the logical token count can fail to reduce time. A schedule of 57 rows executed with a 64-row graph may cost almost the same after trimming to 50. Crossing the next useful shape boundary can produce a larger improvement. The speculative-allocation chapter will expose an analogous effect explicitly.')+
+      engineCase+
       h('deploying-low-precision','A smaller weight format needs a complete numerical path')+
       p('Quantized weights require scales, supported kernels and a validation procedure. Weight storage, activation arithmetic, accumulation and KV storage can use different precisions. Calling an endpoint “four-bit” leaves all four questions open. A model with four-bit expert weights can still spend substantial memory on activations, non-expert parameters and attention state.')+
       p('For a chosen 100-billion-parameter object, two bytes per coordinate require 200 GB and half a byte requires 50 GB before scales and unquantized components. This is a storage calculation. The realized speedup depends on whether the hardware executes that format efficiently, whether unpacking is needed, and which operations dominate the request.')+

@@ -1,8 +1,9 @@
 import {industrialSections} from './industry.mjs';
 import {servingDepth} from './depth.mjs';
+import {deepinferCase, mtpCase, deepinferCommit} from './cases.mjs';
 import {p, math, equation, study, source, definition, table} from '../systems/markup.mjs';
 
-const deployment = 'https://github.com/deepseek-ai/DeepInfer/blob/main/doc/inference_deployment_qa.md';
+const deployment = 'https://github.com/deepseek-ai/DeepInfer/blob/'+deepinferCommit+'/doc/inference_deployment_qa.md';
 const measured = 'https://llm-d.ai/blog/serving-glm-5-2-agentic-workloads-on-llm-d';
 const topology = 'https://llm-d.ai/docs/dev/well-lit-paths/models/glm-5-2';
 const offloading = 'https://docs.nvidia.com/dynamo/v1.6.1/knowledge-base/modular-components/backends/v-llm/native-kv-offloading';
@@ -106,6 +107,7 @@ const coreServing = {
         p('Separating prefill from decode gives each pool its own resource allocation. It adds the transfer between them. DeepSeek’s deployment description uses different expert-parallel group sizes for the two phases, and persistent cache storage adds another path. The relevant comparison includes the execution saved and the traffic introduced.') +
         source('DeepSeek production placement and cache paths', deployment) +
         servingDepth['physical-cluster'] +
+        deepinferCase +
         p('Our repair has reached decode. It can now trade additional work within a step for a chance to advance several tokens at once.'),
     },
     {
@@ -120,6 +122,7 @@ const coreServing = {
         source('DSpark verification budgets and executed shapes', 'https://www.lmsys.org/blog/2026-07-06-dspark-sglang/') +
         p('A timing trace should also include CPU preparation between device steps. Metadata construction and decisions that await sampled results can leave the GPU idle. Overlap can hide independent preparation. A decision requiring the latest result still has to wait for it. The useful optimization depends on which dependency lies on our session’s path.') +
         servingDepth['verification-budget'] +
+        mtpCase +
         p('Once the assistant launches several investigations, those paths form a graph. Finishing one fast stream will no longer be enough to finish the repair.'),
     },
     {
@@ -133,6 +136,8 @@ const coreServing = {
         p('A worker failure presents the same state question more sharply. The harness can resend recorded text, which permits reconstruction. A compatible KV copy elsewhere may shorten recovery. Either path needs a definition of which outputs were committed before interruption and how a resumed stream is joined to the earlier one.') +
         p('Reconstruction can itself use an approximation. DeepInfer documents rebuilding sliding-window state from the latest 128 tokens with a truncated replay window. It identifies that rebuilt cache as approximate, while reusing the separate block cache.') +
         source('DeepInfer bounded replay and its cache policy', deployment) +
+        p('Keep the production replay window separate from the released engine’s retained-suffix setting. The pinned README uses 140 retained tokens for its default V4.1 configuration so the suffix covers the SWA window and maximum backtracking. Substituting 140 for every 128 in the production recovery calculation would mix two different settings.') +
+        source('Released engine retained-suffix setting', 'https://github.com/deepseek-ai/DeepInfer/blob/'+deepinferCommit+'/README.md') +
         p('To assess that choice for our repair, we would compare task success and output behavior after the same interruptions, then record recovery time and work. Exact reuse, recomputation, and bounded reconstruction provide different experimental conditions. The model revision and cache policy are part of the service being tested.') +
         servingDepth['operating-service'] +
         p('Adding machines also has a delay. Weights must become available, execution must be prepared, and useful prefixes may still live on older workers. A freshly allocated replica enters with a different state. Scaling based on uncached prefill work and active decode demand gives a more direct account of those needs than one fleet-wide utilization percentage.'),
